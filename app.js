@@ -232,10 +232,11 @@ const THEMES = [
   ['night', 'Night flight', 'linear-gradient(135deg,#2D2A4A,#3b4096 60%,#A51931)'],
   ['temple', 'Temple morning', 'linear-gradient(135deg,#fff,#e9e6f3 55%,#e7b9c0)'],
   ['andaman', 'Andaman', 'linear-gradient(135deg,#0b4f54,#14878a 60%,#c4503f)'],
+  ['jungle', 'Jungle sun', 'linear-gradient(135deg,#1d5a34,#2f8f4e 55%,#f08a3c)'],
 ];
 function setTheme(t) {
   document.documentElement.dataset.theme = t; localStorage.setItem('bsb.theme', t);
-  document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b' }[t];
+  document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b', jungle: '#0b1f14' }[t];
 }
 function renderMore() {
   const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['thai', 'Thai'], ['settings', 'Settings']];
@@ -259,7 +260,7 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v5</p>`;
+      <p class="count">BSB Travel · v6</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));

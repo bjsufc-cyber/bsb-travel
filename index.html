@@ -20,7 +20,7 @@
   // Theme before first paint, so the app never flashes the wrong colours.
   try { var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('bsb.theme') || 'night';
     document.documentElement.dataset.theme = t;
-    document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b' }[t] || '#0c0e24'; } catch (e) {}
+    document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b', jungle: '#0b1f14' }[t] || '#0c0e24'; } catch (e) {}
 </script>
 <div id="sentinel"></div>
 <div id="navbar"><b id="navtitle"></b><button id="syncdot" aria-label="Sync status"></button></div>
