@@ -148,30 +148,39 @@ async function refreshRate(force) {
 const money = (n, cur) => cur === 'thb' ? '฿' + n.toLocaleString('en-GB', { maximumFractionDigits: n < 20 ? 2 : 0 }) : '£' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const age = (at) => { if (!at) return 'not updated yet'; const m = (Date.now() - at) / 6e4; return m < 60 ? 'updated just now' : m < 1440 ? `updated ${Math.floor(m / 60)}h ago` : `updated ${Math.floor(m / 1440)}d ago`; };
 
+const FLAG = {
+  thb: '<svg class="flag" viewBox="0 0 30 30" aria-hidden="true"><path fill="#A51931" d="M0 0h30v30H0z"/><path fill="#F4F5F8" d="M0 5h30v20H0z"/><path fill="#2D2A4A" d="M0 10h30v10H0z"/></svg>',
+  gbp: '<svg class="flag" viewBox="15 0 30 30" aria-hidden="true"><clipPath id="uj"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uj)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg>',
+};
+const CUR = { thb: ['THB', 'Thai baht', '฿'], gbp: ['GBP', 'Pounds', '£'] };
+const curRow = (cur, value) => `${FLAG[cur]}<div class="grow"><small>${CUR[cur][0]} · ${CUR[cur][1]}</small><b>${value}</b></div>`;
 function paintConvert() {
   const from = ui.dir, to = from === 'thb' ? 'gbp' : 'thb', n = parseFloat(amount) || 0;
   const out = from === 'thb' ? n / rate.rate : n * rate.rate;
-  $('#cfrom').innerHTML = `<small>${from === 'thb' ? 'Thai baht' : 'Pounds'}</small><b>${from === 'thb' ? '฿' : '£'}${esc(amount ? amount.replace(/\B(?=(\d{3})+(?!\d))/g, (m, _o, _s) => m).replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0')}</b>`;
-  $('#cto').innerHTML = `<small>${to === 'thb' ? 'Thai baht' : 'Pounds'}</small><b>${money(out, to)}</b>`;
+  $('#cfrom').innerHTML = curRow(from, CUR[from][2] + esc(amount ? amount.replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0'));
+  $('#cto').innerHTML = curRow(to, money(out, to));
   $('#crate').textContent = `£1 = ฿${rate.rate.toFixed(2)} · ${rate.manual ? 'set by you' : age(rate.at)}`;
 }
 function renderConvert() {
   const quick = ui.dir === 'thb' ? [20, 50, 100, 200, 500, 1000, 2000, 5000] : [1, 5, 10, 20, 50, 100, 200, 500];
   view.innerHTML = `<div class="conv">
     <div class="disp"><div id="cfrom" class="from"></div><button id="swap" aria-label="Swap currencies">⇅</button><div id="cto" class="to"></div></div>
-    <div class="raterow"><button id="crate" class="rate"></button><button class="clear" data-k="C">Clear</button></div>
+    <button id="crate" class="rate"></button>
     <div class="quick">${quick.map((q) => `<button data-q="${q}">${ui.dir === 'thb' ? '฿' : '£'}${q.toLocaleString('en-GB')}</button>`).join('')}</div>
-    <div class="pad">${['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '⌫'].map((k) => `<button data-k="${k}">${k}</button>`).join('')}</div></div>`;
+    <div class="pad">${['AC', '⌫', '⇅', '7', '8', '9', '4', '5', '6', '1', '2', '3', '00', '0', '.'].map((k) => `<button data-k="${k}" class="${/\d|\./.test(k) ? '' : 'fn'}" aria-label="${{ AC: 'Clear', '⌫': 'Delete', '⇅': 'Swap currencies' }[k] || k}">${k}</button>`).join('')}</div></div>`;
   paintConvert(); refreshRate();
-  $('#swap').onclick = () => { ui.dir = ui.dir === 'thb' ? 'gbp' : 'thb'; amount = ''; saveUi(); renderConvert(); };
+  const swap = () => { ui.dir = ui.dir === 'thb' ? 'gbp' : 'thb'; saveUi(); renderConvert(); };
+  const digit = (k) => { if (amount.replace('.', '').length < 9 && !/\.\d\d$/.test(amount)) amount = amount === '0' ? k : amount + k; };
   $('.conv').onclick = (e) => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'swap' || b.dataset.k === '⇅') return swap();
     if (b.dataset.q) amount = b.dataset.q;
     else if (b.dataset.k) {
       const k = b.dataset.k;
-      if (k === 'C') amount = ''; else if (k === '⌫') amount = amount.slice(0, -1);
+      if (k === 'AC') amount = ''; else if (k === '⌫') amount = amount.slice(0, -1);
+      else if (k === '00') { if (amount && amount !== '0') { digit('0'); digit('0'); } }
       else if (k === '.') { if (!amount.includes('.')) amount = (amount || '0') + '.'; }
-      else if (amount.replace('.', '').length < 9 && !/\.\d\d$/.test(amount)) amount = amount === '0' ? k : amount + k;
+      else digit(k);
     } else return;
     paintConvert();
   };
@@ -237,7 +246,7 @@ function renderMore() {
       <div class="card"><b>GitHub token</b><p>${S.cfg.token ? 'A token is saved on this phone.' : 'No token yet, so this phone can view but not save changes.'}</p>
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v2</p>`;
+      <p class="count">BSB Travel · v3</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
