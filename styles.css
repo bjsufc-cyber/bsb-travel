@@ -190,6 +190,12 @@ body[data-tab="convert"] #view { padding-bottom: calc(var(--sab) + 52px); }
 .themes i { display: block; height: 34px; border-radius: 9px; margin-bottom: 6px; }
 #quickadd { display: flex; gap: 8px; } #quickadd .btn { margin: 0; }
 input, textarea, select { width: 100%; background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid var(--line); border-radius: 13px; padding: 11px 12px; font-size: 16px; -webkit-user-select: text; user-select: text; -webkit-appearance: none; appearance: none; min-height: 46px; }
+.search { position: relative; margin-bottom: 10px; }
+.search svg { position: absolute; left: 12px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+.search input { padding-left: 38px; padding-right: 40px; }
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.search button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; color: var(--muted); font-size: 14px; }
+.pgroup[hidden], .phrase[hidden] { display: none; }
 .phrase .th { font-size: 21px; line-height: 1.35; } .phrase .ro { color: var(--accent); font-size: 14px; font-style: italic; } .spk { opacity: .5; }
 
 .setup { max-width: 360px; margin: 0 auto; padding-top: calc(var(--sat) + 8vh); text-align: center; display: flex; flex-direction: column; gap: 12px; }

@@ -6,7 +6,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const view = $('#view'), sheet = $('#sheet');
 const ui = JSON.parse(localStorage.getItem('bsb.ui') || '{}');
 const saveUi = () => localStorage.setItem('bsb.ui', JSON.stringify(ui));
-ui.tab ??= 'today'; ui.more ??= 'todo'; ui.dir ??= 'thb'; ui.open ??= {};
+ui.tab ??= 'today'; ui.more ??= 'todo';
+if (ui.tab === 'info') { ui.tab = 'more'; ui.more = 'info'; }
+if (ui.more === 'thai') ui.more = 'info';
+ui.dir ??= 'thb'; ui.open ??= {};
 
 /* ---------- dates ---------- */
 const pad = (n) => String(n).padStart(2, '0');
@@ -40,14 +43,14 @@ $('#syncdot').addEventListener('click', () => { ui.tab = 'more'; ui.more = 'sett
 
 function render() {
   document.body.dataset.tab = S.cfg.pass ? ui.tab : 'setup';
-  const order = ['today', 'plan', 'convert', 'info', 'more'];
+  const order = ['today', 'plan', 'convert', 'translate', 'more'];
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
   $('#tabs').style.setProperty('--i', order.indexOf(ui.tab));
-  $('#title').textContent = $('#navtitle').textContent = { today: 'Today', plan: 'Plan', convert: 'Convert', info: 'Info', more: 'More' }[ui.tab];
+  $('#title').textContent = $('#navtitle').textContent = { today: 'Today', plan: 'Plan', convert: 'Convert', translate: 'Translate', more: 'More' }[ui.tab];
   const st = S.status.state, dot = $('#syncdot');
   dot.className = S.isDirty() && st !== 'syncing' ? (st === 'error' ? 'error' : 'pending') : st;
   if (!S.cfg.pass) return renderSetup();
-  ({ today: renderToday, plan: renderPlan, convert: renderConvert, info: renderInfo, more: renderMore }[ui.tab])();
+  ({ today: renderToday, plan: renderPlan, convert: renderConvert, translate: renderTranslate, more: renderMore }[ui.tab])();
 }
 
 /* ---------- setup ---------- */
@@ -196,9 +199,9 @@ function renderConvert() {
 
 /* ---------- info ---------- */
 const CATS = ['Flights', 'Stays', 'Car hire', 'Transfers', 'Insurance', 'Visas and documents', 'Emergency', 'Contacts'];
-function renderInfo() {
+function infoHTML() {
   const I = S.all('info'), cats = [...CATS, ...new Set(I.map((x) => x.cat).filter((c) => !CATS.includes(c)))];
-  view.innerHTML = `<div class="chips">${cats.filter((c) => I.some((x) => x.cat === c)).map((c) => `<a href="#" data-jump="${esc(c)}">${esc(c)}</a>`).join('')}</div>` +
+  return `<div class="chips">${cats.filter((c) => I.some((x) => x.cat === c)).map((c) => `<a href="#" data-jump="${esc(c)}">${esc(c)}</a>`).join('')}</div>` +
     cats.map((c) => {
       const rows = I.filter((x) => x.cat === c).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.u - b.u);
       return rows.length ? `<h3 id="cat-${esc(c)}">${esc(c)}</h3>` + rows.map((x) => `<article class="card">
@@ -224,7 +227,39 @@ function showDriver(x) {
   d.hidden = false; d.onclick = () => (d.hidden = true);
 }
 
-/* ---------- more: lists, phrases, settings ---------- */
+/* ---------- translate ---------- */
+const norm = (t) => t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ');
+// Extra English words people might search for, so 'loo' finds the toilet.
+const SYN = { 'Hello / goodbye': 'hi bye greeting', 'Thank you': 'thanks cheers', 'Sorry / excuse me': 'apologise pardon', 'How much is this?': 'price cost', 'Too expensive': 'price cost dear', 'Can you lower the price?': 'discount cheaper bargain haggle', 'Can I pay by card?': 'credit debit payment', 'No bag, thanks': 'plastic carrier', 'Not spicy': 'chilli hot mild', 'A little spicy': 'chilli hot medium', 'No chilli (for the child)': 'spicy hot kid baby bella isabella', 'Delicious': 'tasty good food', 'The bill, please': 'check pay cheque restaurant', 'Water': 'drink bottle', 'No ice': 'drink cold', 'No sugar': 'sweet drink', 'Takeaway': 'take away to go', 'Please take me here': 'taxi driver grab address', 'Please use the meter': 'taxi driver fare', 'Stop here, please': 'taxi driver drop', 'Where is the toilet?': 'loo bathroom restroom wc', 'Turn left / turn right': 'directions driver', 'Straight on': 'ahead directions driver', 'Airport': 'flight plane', 'How long does it take?': 'time minutes', 'She is two years old': 'age bella isabella baby child kid', 'Do you have a high chair?': 'baby bella isabella restaurant', 'Do you have a child seat?': 'car seat baby taxi', 'Nappies': 'diapers baby', 'Milk': 'baby drink', 'Help!': 'emergency', 'Please call an ambulance': 'emergency doctor', 'Hospital': 'doctor emergency sick ill', 'Pharmacy': 'chemist medicine drugstore', '{i} am allergic to…': 'allergy nuts', '{i} am lost': 'directions help', '1, 2, 3, 4, 5': 'one two three four five', '6, 7, 8, 9, 10': 'six seven eight nine ten', '20 / 50': 'twenty fifty', '100 / 500': 'hundred', '1,000': 'thousand' };
+function renderTranslate() {
+  const f = ui.female, sub = (s, rom) => s.replaceAll('{p}', rom ? (f ? 'kha' : 'khrap') : (f ? 'ค่ะ' : 'ครับ')).replaceAll('{i}', rom ? (f ? 'chan' : 'phom') : (f ? 'ฉัน' : 'ผม'));
+  const en = (t) => sub(t, true).replace('chan', 'I').replace('phom', 'I');
+  view.innerHTML = `<div class="seg two"><button data-voice="m" class="${f ? '' : 'on'}">Ben says (khrap)</button><button data-voice="f" class="${f ? 'on' : ''}">Stefania says (kha)</button></div>
+    <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="tq" type="search" placeholder="Search in English, e.g. toilet, spicy, how much" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(ui.tq || '')}"><button id="tqx" aria-label="Clear search" hidden>✕</button></div>
+    <p class="count" id="tcount">Tap a phrase to hear it.</p>` + PHRASES.map(([cat, list]) => `<section class="pgroup"><h3>${esc(cat)}</h3><ul class="list">${list.map(([e, th, ro]) =>
+      `<li class="row phrase" data-say="${esc(sub(th))}" data-k="${esc(norm(en(e) + ' ' + cat + ' ' + (SYN[e] || '')))}"><div class="grow"><div class="s">${esc(en(e))}</div><div class="th">${esc(sub(th))}</div><div class="ro">${esc(sub(ro, true))}</div></div><span class="spk">🔊</span></li>`).join('')}</ul></section>`).join('') +
+    `<p class="empty" id="tnone" hidden>No phrases match. Try a simpler word.</p>`;
+  view.querySelectorAll('[data-voice]').forEach((b) => (b.onclick = () => { ui.female = b.dataset.voice === 'f'; saveUi(); render(); }));
+  const inp = $('#tq'), x = $('#tqx');
+  const filter = () => {
+    const words = norm(inp.value).split(' ').filter(Boolean); let n = 0;
+    ui.tq = inp.value; x.hidden = !inp.value;
+    view.querySelectorAll('.pgroup').forEach((g) => {
+      let any = false;
+      g.querySelectorAll('.phrase').forEach((r) => { const k = ' ' + r.dataset.k; const ok = words.every((w) => k.includes(' ' + w)); r.hidden = !ok; if (ok) { any = true; n++; } });
+      g.hidden = !any;
+    });
+    $('#tnone').hidden = n > 0;
+    $('#tcount').hidden = words.length && !n;
+    $('#tcount').textContent = words.length ? `${n} phrase${n === 1 ? '' : 's'} found. Tap one to hear it.` : 'Tap a phrase to hear it.';
+  };
+  inp.oninput = filter;
+  inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+  x.onclick = () => { inp.value = ''; filter(); inp.focus(); };
+  filter();
+}
+
+/* ---------- more: lists, info, settings ---------- */
 function todoRow(x) {
   return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}</div></li>`;
 }
@@ -239,18 +274,15 @@ function setTheme(t) {
   document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b', jungle: '#0b1f14' }[t];
 }
 function renderMore() {
-  const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['thai', 'Thai'], ['settings', 'Settings']];
+  const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['info', 'Info'], ['settings', 'Settings']];
   let body = '';
   if (ui.more === 'todo' || ui.more === 'pack') {
     const rows = S.all('todo').filter((x) => x.list === ui.more).sort((a, b) => !!a.done - !!b.done || (a.order ?? 1e9) - (b.order ?? 1e9) || a.u - b.u);
     const left = rows.filter((x) => !x.done).length;
     body = `<form id="quickadd"><input id="qa" placeholder="${ui.more === 'todo' ? 'Add a to-do' : 'Add something to pack'}" enterkeyhint="done"><button class="btn small">Add</button></form>
       <p class="count">${left} left of ${rows.length}</p><ul class="list">${rows.map(todoRow).join('')}</ul>`;
-  } else if (ui.more === 'thai') {
-    const f = ui.female, sub = (s, rom) => s.replaceAll('{p}', rom ? (f ? 'kha' : 'khrap') : (f ? 'ค่ะ' : 'ครับ')).replaceAll('{i}', rom ? (f ? 'chan' : 'phom') : (f ? 'ฉัน' : 'ผม'));
-    body = `<div class="seg two"><button data-voice="m" class="${f ? '' : 'on'}">Ben says (khrap)</button><button data-voice="f" class="${f ? 'on' : ''}">Stefania says (kha)</button></div>
-      <p class="count">Tap a phrase to hear it.</p>` + PHRASES.map(([cat, list]) => `<h3>${esc(cat)}</h3><ul class="list">${list.map(([en, th, ro]) =>
-        `<li class="row phrase" data-say="${esc(sub(th))}"><div class="grow"><div class="s">${esc(sub(en, true).replace('chan', 'I').replace('phom', 'I'))}</div><div class="th">${esc(sub(th))}</div><div class="ro">${esc(sub(ro, true))}</div></div><span class="spk">🔊</span></li>`).join('')}</ul>`).join('');
+  } else if (ui.more === 'info') {
+    body = infoHTML();
   } else {
     const st = S.status;
     const line = st.state === 'syncing' ? 'Syncing…' : st.error ? st.error : S.isDirty() ? 'Changes waiting to sync' + (st.state === 'offline' ? ' (offline)' : '') : st.state === 'offline' ? 'Offline. Showing saved data' : 'Up to date';
@@ -260,12 +292,11 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v8</p>`;
+      <p class="count">BSB Travel · v9</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
   view.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => { setTheme(b.dataset.theme); render(); }));
-  view.querySelectorAll('[data-voice]').forEach((b) => (b.onclick = () => { ui.female = b.dataset.voice === 'f'; saveUi(); render(); }));
   const qa = $('#quickadd');
   if (qa) qa.onsubmit = (e) => { e.preventDefault(); const v = $('#qa').value.trim(); if (v) { S.put({ type: 'todo', list: ui.more, text: v }); setTimeout(() => $('#qa')?.focus()); } };
   if ($('#syncnow')) {
@@ -323,7 +354,7 @@ view.addEventListener('click', (e) => {
 });
 
 /* ---------- boot ---------- */
-S.onChange(() => { if (sheet.hidden && !(ui.tab === 'convert' && S.cfg.pass) && document.activeElement?.id !== 'qa') render(); else if (document.activeElement?.id === 'qa') { const v = ''; render(); $('#qa').value = v; $('#qa').focus(); } else document.body.dataset.sync = S.status.state; });
+S.onChange(() => { if (sheet.hidden && !((ui.tab === 'convert' || ui.tab === 'translate') && S.cfg.pass) && document.activeElement?.id !== 'qa') render(); else if (document.activeElement?.id === 'qa') { const v = ''; render(); $('#qa').value = v; $('#qa').focus(); } else document.body.dataset.sync = S.status.state; });
 render();
 // The compact glass title bar appears once the large title has scrolled away.
 new IntersectionObserver(([e]) => { if (e.isIntersecting) delete document.body.dataset.scrolled; else document.body.dataset.scrolled = '1'; }).observe($('#sentinel'));
