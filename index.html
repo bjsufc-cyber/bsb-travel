@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>BSB Travel</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BSB Travel">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b4f54">
+<meta name="robots" content="noindex,nofollow">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="top"><h1 id="title">BSB Travel</h1><button id="syncdot" aria-label="Sync status"></button></header>
+<main id="view"></main>
+<nav id="tabs">
+  <button data-tab="today"><span>🏝️</span>Today</button>
+  <button data-tab="plan"><span>🗓️</span>Plan</button>
+  <button data-tab="convert"><span>฿</span>Convert</button>
+  <button data-tab="info"><span>🎫</span>Info</button>
+  <button data-tab="more"><span>☰</span>More</button>
+</nav>
+<div id="sheet" hidden></div>
+<div id="driver" hidden></div>
+<div id="toast" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
