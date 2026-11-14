@@ -74,11 +74,12 @@ button { border: 0; background: none; padding: 0; cursor: pointer; }
 }
 
 /* Large title in the page; a compact glass bar fades in over it once you scroll. */
-#top { padding: calc(var(--sat) + 14px) 18px 6px; }
+/* iOS blurs a strip just under the status bar in home-screen apps, so the header starts below it. */
+#top { padding: calc(var(--sat) + 32px) 18px 6px; }
 #top .eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: .14em; color: var(--muted); }
 #top .eyebrow i { width: 26px; height: 5px; border-radius: 3px; background: var(--ribbon); }
 #top h1 { margin: 2px 0 0; font-size: 34px; line-height: 1.12; font-weight: 800; letter-spacing: -.02em; }
-#sentinel { position: absolute; top: calc(var(--sat) + 52px); height: 1px; width: 1px; }
+#sentinel { position: absolute; top: calc(var(--sat) + 70px); height: 1px; width: 1px; }
 #navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 6; height: calc(var(--sat) + 44px); padding-top: var(--sat); display: flex; align-items: center; justify-content: center; pointer-events: none; }
 #navbar::before { content: ""; position: absolute; inset: 0 0 -18px 0; opacity: 0; transition: opacity .18s;
   background: color-mix(in srgb, var(--surface) var(--chrome-a), transparent); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
@@ -91,12 +92,12 @@ body[data-scrolled] #navbar::before, body[data-scrolled] #navbar b { opacity: 1;
 #syncdot.error::after { background: #ff8674; } #syncdot.syncing::after { background: var(--ink); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
-#view { padding: 10px 16px calc(var(--sab) + 104px); }
+#view { padding: 10px 16px calc(var(--sab) + 84px); }
 
 /* Tab bar: a floating glass capsule with one lit pill that slides to the active tab. */
-#tabfade { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--sab) + 104px); z-index: 4; pointer-events: none;
-  background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 80%, transparent) 55%); }
-#tabs { position: fixed; left: 12px; right: 12px; bottom: calc(var(--sab) + 8px); z-index: 5; display: flex; border-radius: 28px; padding: 4px;
+#tabfade { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--sab) + 96px); z-index: 4; pointer-events: none;
+  background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 88%, transparent) 50%, var(--bg) 85%); }
+#tabs { position: fixed; left: 12px; right: 12px; bottom: max(calc(var(--sab) - 16px), 10px); z-index: 5; display: flex; border-radius: 28px; padding: 4px;
   border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 10px 30px rgba(0,0,0,.28); }
 #tabs .pill { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 5); border-radius: 24px;
   background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
@@ -141,8 +142,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: v
 .day.ideas h4 { color: var(--muted); font-weight: 500; }
 .day .list { margin-bottom: 6px; }
 
-.conv { display: flex; flex-direction: column; gap: 10px; min-height: calc(100dvh - var(--sat) - var(--sab) - 190px); }
-body[data-tab="convert"] #view { padding-bottom: calc(var(--sab) + 76px); }
+.conv { display: flex; flex-direction: column; gap: 10px; min-height: calc(100dvh - var(--sat) - var(--sab) - 164px); }
+body[data-tab="convert"] #view { padding-bottom: calc(var(--sab) + 52px); }
 .disp { border-radius: 24px; padding: 6px 18px; position: relative; flex: none; }
 .disp > div { padding: 9px 0; display: flex; align-items: center; gap: 12px; }
 .flag { width: 38px; height: 38px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px var(--line); } .disp .to { border-top: 1px solid var(--line); }
