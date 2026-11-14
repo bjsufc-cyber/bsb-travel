@@ -76,6 +76,15 @@ function planRow(p, showDate) {
     <div class="time">${showDate && p.date ? esc(fmtDay(p.date, { day: 'numeric', month: 'short' })) + '<br>' : ''}${esc(p.time || '')}</div></li>`;
 }
 
+const ZONES = [['gbp', 'UK', 'Europe/London'], ['thb', 'Thailand', 'Asia/Bangkok']];
+function clocksHTML(now) {
+  const parts = (tz) => Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, x.value]));
+  const wall = (o) => Date.parse(`${o.day} ${o.month} ${o.year} ${o.hour}:${o.minute} UTC`);
+  const P = ZONES.map(([, , tz]) => parts(tz)), diff = Math.round((wall(P[1]) - wall(P[0])) / 36e5);
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return `<div class="clocks">${ZONES.map(([f, name, tz], i) => `<div class="clock glass${tz === here ? ' here' : ''}">${FLAG[f]}<div><small>${name}${tz === here ? ' · you' : ''}</small><b>${P[i].hour}:${P[i].minute}</b><span>${P[i].weekday} ${P[i].day} ${P[i].month}</span></div></div>`).join('')}</div>
+    <p class="count ahead">Thailand is ${diff} hours ahead of the UK</p>`;
+}
 function renderToday() {
   const now = new Date(), t = today(), L = legs();
   const start = L[0]?.from, end = L.at(-1)?.to;
@@ -94,7 +103,7 @@ function renderToday() {
   }
   const todays = plans().filter((p) => p.date === t).sort(byTime);
   const todos = S.all('todo').filter((x) => x.list === 'todo' && !x.done).slice(0, 5);
-  view.innerHTML = hero +
+  view.innerHTML = hero + clocksHTML(now) +
     `<h3>Today, ${esc(fmtDay(t))} <button class="add" data-add="plan" data-date="${t}">＋</button></h3>
      ${todays.length ? `<ul class="list">${todays.map((p) => planRow(p)).join('')}</ul>` : `<p class="empty">Nothing planned today.</p>`}
      ${upcoming.length > 1 ? `<h3>Coming up</h3><ul class="list">${upcoming.slice(1, 6).map((p) =>
@@ -301,7 +310,7 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v11</p>`;
+      <p class="count">BSB Travel · v12</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
