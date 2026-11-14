@@ -143,15 +143,17 @@ const rate = JSON.parse(localStorage.getItem('bsb.rate') || '{"rate":43.5,"at":0
 const saveRate = () => localStorage.setItem('bsb.rate', JSON.stringify(rate));
 let amount = '';
 async function refreshRate(force) {
-  if (rate.manual || (!force && Date.now() - rate.at < 6 * 36e5)) return;
-  const tryGet = async (url, pick) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw 0; const v = pick(await r.json()); if (!(v > 10 && v < 200)) throw 0; return v; };
+  if ((rate.manual && !force) || (!force && Date.now() - rate.at < 6 * 36e5)) return 'skip';
+  const tryGet = async (url, pick) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw 0; const v = pick(await r.json()); if (!(v[0] > 10 && v[0] < 200)) throw 0; return v; };
   try {
-    rate.rate = await tryGet('https://open.er-api.com/v6/latest/GBP', (j) => j.rates.THB)
-      .catch(() => tryGet('https://api.frankfurter.app/latest?from=GBP&to=THB', (j) => j.rates.THB));
-    rate.at = Date.now(); saveRate(); if (ui.tab === 'convert') paintConvert();
-  } catch {}
+    const [v, pub] = await tryGet('https://open.er-api.com/v6/latest/GBP', (j) => [j.rates.THB, j.time_last_update_unix * 1000])
+      .catch(() => tryGet('https://api.frankfurter.app/latest?from=GBP&to=THB', (j) => [j.rates.THB, Date.parse(j.date + 'T12:00:00Z')]));
+    rate.rate = v; rate.pub = pub || Date.now(); rate.at = Date.now(); rate.manual = false; saveRate(); if (ui.tab === 'convert') paintConvert();
+    return 'ok';
+  } catch { return 'fail'; }
 }
 const money = (n, cur) => cur === 'thb' ? '฿' + n.toLocaleString('en-GB', { maximumFractionDigits: n < 20 ? 2 : 0 }) : '£' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pubDay = (t) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 const age = (at) => { if (!at) return 'not updated yet'; const m = (Date.now() - at) / 6e4; return m < 60 ? 'updated just now' : m < 1440 ? `updated ${Math.floor(m / 60)}h ago` : `updated ${Math.floor(m / 1440)}d ago`; };
 
 const FLAG = {
@@ -165,13 +167,13 @@ function paintConvert() {
   const out = from === 'thb' ? n / rate.rate : n * rate.rate;
   $('#cfrom').innerHTML = curRow(from, CUR[from][2] + esc(amount ? amount.replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0'));
   $('#cto').innerHTML = curRow(to, money(out, to));
-  $('#crate').textContent = `£1 = ฿${rate.rate.toFixed(2)} · ${rate.manual ? 'set by you' : age(rate.at)}`;
+  $('#crate').textContent = `£1 = ฿${rate.rate.toFixed(2)} · ${rate.manual ? 'set by you' : rate.pub ? 'rate for ' + pubDay(rate.pub) : age(rate.at)}`;
 }
 function renderConvert() {
   const quick = ui.dir === 'thb' ? [20, 50, 100, 200, 500, 1000, 2000, 5000] : [1, 5, 10, 20, 50, 100, 200, 500];
   view.innerHTML = `<div class="conv">
     <div class="disp"><div id="cfrom" class="from"></div><button id="swap" aria-label="Swap currencies">⇅</button><div id="cto" class="to"></div></div>
-    <button id="crate" class="rate"></button>
+    <div class="raterow"><button id="crate" class="rate"></button><button id="cref" class="refresh" aria-label="Refresh rate">↻</button></div>
     <div class="quick">${quick.map((q) => `<button data-q="${q}">${ui.dir === 'thb' ? '฿' : '£'}${q.toLocaleString('en-GB')}</button>`).join('')}</div>
     <div class="pad">${['AC', '⌫', '⇅', '7', '8', '9', '4', '5', '6', '1', '2', '3', '00', '0', '.'].map((k) => `<button data-k="${k}" class="${/\d|\./.test(k) ? '' : 'fn'}" aria-label="${{ AC: 'Clear', '⌫': 'Delete', '⇅': 'Swap currencies' }[k] || k}">${k}</button>`).join('')}</div></div>`;
   paintConvert(); refreshRate();
@@ -189,6 +191,13 @@ function renderConvert() {
       else digit(k);
     } else return;
     paintConvert();
+  };
+  $('#cref').onclick = async (e) => {
+    const b = e.currentTarget; if (b.classList.contains('spin')) return;
+    const wasManual = rate.manual; b.classList.add('spin');
+    const [res] = await Promise.all([refreshRate(true), new Promise((r) => setTimeout(r, 600))]);
+    b.classList.remove('spin'); paintConvert();
+    toast(res === 'ok' ? wasManual ? 'Back to the market rate' : 'Rate updated' : 'No connection. Keeping the last rate');
   };
   $('#crate').onclick = () => openSheet({
     title: 'Exchange rate', rec: { rate: rate.rate.toFixed(2), manual: rate.manual },
@@ -292,7 +301,7 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v10</p>`;
+      <p class="count">BSB Travel · v11</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
