@@ -40,7 +40,10 @@ $('#syncdot').addEventListener('click', () => { ui.tab = 'more'; ui.more = 'sett
 
 function render() {
   document.body.dataset.tab = S.cfg.pass ? ui.tab : 'setup';
+  const order = ['today', 'plan', 'convert', 'info', 'more'];
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
+  $('#tabs').style.setProperty('--i', order.indexOf(ui.tab));
+  $('#title').textContent = $('#navtitle').textContent = { today: 'Today', plan: 'Plan', convert: 'Convert', info: 'Info', more: 'More' }[ui.tab];
   const st = S.status.state, dot = $('#syncdot');
   dot.className = S.isDirty() && st !== 'syncing' ? (st === 'error' ? 'error' : 'pending') : st;
   if (!S.cfg.pass) return renderSetup();
@@ -225,6 +228,15 @@ function showDriver(x) {
 function todoRow(x) {
   return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}</div></li>`;
 }
+const THEMES = [
+  ['night', 'Night flight', 'linear-gradient(135deg,#2D2A4A,#3b4096 60%,#A51931)'],
+  ['temple', 'Temple morning', 'linear-gradient(135deg,#fff,#e9e6f3 55%,#e7b9c0)'],
+  ['andaman', 'Andaman', 'linear-gradient(135deg,#0b4f54,#14878a 60%,#c4503f)'],
+];
+function setTheme(t) {
+  document.documentElement.dataset.theme = t; localStorage.setItem('bsb.theme', t);
+  document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b' }[t];
+}
 function renderMore() {
   const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['thai', 'Thai'], ['settings', 'Settings']];
   let body = '';
@@ -245,11 +257,13 @@ function renderMore() {
       <button class="btn small" id="syncnow">Sync now</button></div>
       <div class="card"><b>GitHub token</b><p>${S.cfg.token ? 'A token is saved on this phone.' : 'No token yet, so this phone can view but not save changes.'}</p>
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
+      <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v4</p>`;
+      <p class="count">BSB Travel · v5</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
+  view.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => { setTheme(b.dataset.theme); render(); }));
   view.querySelectorAll('[data-voice]').forEach((b) => (b.onclick = () => { ui.female = b.dataset.voice === 'f'; saveUi(); render(); }));
   const qa = $('#quickadd');
   if (qa) qa.onsubmit = (e) => { e.preventDefault(); const v = $('#qa').value.trim(); if (v) { S.put({ type: 'todo', list: ui.more, text: v }); setTimeout(() => $('#qa')?.focus()); } };
@@ -310,6 +324,8 @@ view.addEventListener('click', (e) => {
 /* ---------- boot ---------- */
 S.onChange(() => { if (sheet.hidden && !(ui.tab === 'convert' && S.cfg.pass) && document.activeElement?.id !== 'qa') render(); else if (document.activeElement?.id === 'qa') { const v = ''; render(); $('#qa').value = v; $('#qa').focus(); } else document.body.dataset.sync = S.status.state; });
 render();
+// The compact glass title bar appears once the large title has scrolled away.
+new IntersectionObserver(([e]) => { if (e.isIntersecting) delete document.body.dataset.scrolled; else document.body.dataset.scrolled = '1'; }).observe($('#sentinel'));
 S.sync();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { S.sync(); refreshRate(); if (sheet.hidden) render(); } });
 window.addEventListener('online', () => S.sync());
