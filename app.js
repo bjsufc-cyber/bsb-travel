@@ -34,7 +34,7 @@ function rel(ms) {
 
 /* ---------- shell ---------- */
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
-function setTab(tab) { ui.tab = tab; saveUi(); render(); view.scrollTop = 0; }
+function setTab(tab) { ui.tab = tab; saveUi(); render(); window.scrollTo(0, 0); }
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 $('#syncdot').addEventListener('click', () => { ui.tab = 'more'; ui.more = 'settings'; saveUi(); render(); S.sync(); });
 
@@ -237,7 +237,7 @@ function renderMore() {
       <div class="card"><b>GitHub token</b><p>${S.cfg.token ? 'A token is saved on this phone.' : 'No token yet, so this phone can view but not save changes.'}</p>
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v1</p>`;
+      <p class="count">BSB Travel · v2</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -266,8 +266,8 @@ function openSheet({ title, fields, rec, onSave, onDelete, saveLabel = 'Save' })
       f.type === 'select' ? `<select name="${f.k}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${v === (rec[f.k] ?? '') ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` :
       `<input name="${f.k}" type="${f.type === 'number' ? 'text' : f.type}" ${f.type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(rec[f.k])}" ${f.required ? 'required' : ''}>`}</label>`).join('')}
     ${onDelete ? '<button type="button" class="btn danger" data-del>Delete</button>' : ''}</form>`;
-  sheet.hidden = false;
-  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; };
+  sheet.hidden = false; document.body.classList.add('locked');
+  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
   sheet.onclick = (e) => { if (e.target === sheet || e.target.closest('[data-x]')) close(); if (e.target.closest('[data-del]')) { onDelete(); close(); } };
   $('form', sheet).onsubmit = (e) => {
     e.preventDefault();
