@@ -232,3 +232,7 @@ input, textarea, select { width: 100%; background: color-mix(in srgb, var(--surf
 .backdef { align-self: center; color: var(--accent); font-size: 13.5px; font-weight: 600; padding: 2px 12px; margin-top: -6px; }
 .picker .row { width: 100%; text-align: left; } .picker li + li { border-top: 1px solid var(--line); } .picker small { display: block; color: var(--muted); font-size: 12.5px; }
 .picker .flag { width: 32px; height: 32px; } .curon { color: var(--accent); font-weight: 700; font-size: 18px; }
+h3[id^="cat-"] { scroll-margin-top: calc(var(--sat) + 62px); }
+#driver .dcopy { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+#driver .dcopy button { background: #2D2A4A; color: #fff; border-radius: 14px; padding: 14px; font-size: 17px; font-weight: 600; }
+#driver .dcopy button:active { background: #A51931; }

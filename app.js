@@ -275,8 +275,18 @@ const infoFields = [
 ];
 function showDriver(x) {
   const d = $('#driver');
-  d.innerHTML = `<small>กรุณาพาไปที่นี่ · Please take us here</small><div class="th">${esc(x.th)}</div><div class="en">${esc(x.title)}${x.map ? '<br>' + esc(x.map) : ''}</div>${x.phone ? `<div class="en">โทร ${esc(x.phone)}</div>` : ''}<em>Tap to close</em>`;
-  d.hidden = false; d.onclick = () => (d.hidden = true);
+  d.innerHTML = `<small>กรุณาพาไปที่นี่ · Please take us here</small><div class="th">${esc(x.th)}</div><div class="en">${esc(x.title)}${x.map ? '<br>' + esc(x.map) : ''}</div>${x.phone ? `<div class="en">โทร ${esc(x.phone)}</div>` : ''}
+    <div class="dcopy"><button data-c="th">Copy Thai address</button>${x.map ? '<button data-c="en">Copy English address</button>' : ''}</div><em>Tap anywhere else to close</em>`;
+  d.hidden = false;
+  d.onclick = (e) => {
+    const b = e.target.closest('[data-c]'); if (!b) return (d.hidden = true);
+    copyText(b.dataset.c === 'th' ? x.th : x.map);
+  };
+}
+// Copy to the clipboard, with an older fallback for when the clipboard API says no.
+function copyText(t) {
+  const fallback = () => { const a = document.createElement('textarea'); a.value = t; a.setAttribute('readonly', ''); a.style.cssText = 'position:fixed;opacity:0'; document.body.append(a); a.select(); a.setSelectionRange(0, t.length); const ok = document.execCommand('copy'); a.remove(); toast(ok ? 'Copied' : 'Couldn\'t copy on this phone'); };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(() => toast('Copied'), fallback); else fallback();
 }
 
 /* ---------- translate ---------- */
@@ -345,7 +355,7 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v13</p>`;
+      <p class="count">BSB Travel · v15</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -414,7 +424,7 @@ view.addEventListener('click', (e) => {
   const q = (a) => e.target.closest(`[${a}]`);
   let el;
   if ((el = q('data-tick'))) { const r = S.items[el.dataset.tick]; S.put({ ...r, done: !r.done }); }
-  else if ((el = q('data-copy'))) { navigator.clipboard?.writeText(el.dataset.copy).then(() => toast('Copied'), () => {}); }
+  else if ((el = q('data-copy'))) copyText(el.dataset.copy);
   else if ((el = q('data-driver'))) showDriver(S.items[el.dataset.driver]);
   else if ((el = q('data-say'))) say(el.dataset.say);
   else if ((el = q('data-jump'))) { e.preventDefault(); document.getElementById('cat-' + el.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); }
