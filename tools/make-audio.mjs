@@ -1,4 +1,4 @@
-// Builds audio/*.m4a for every Thai phrase (khrap and kha versions) with the Mac's Thai voice,
+// Builds audio/*.m4a for every Thai phrase (khrap and kha, Central and Isaan versions) with the Mac's Thai voice,
 // plus audio/list.json ({ thai text: file }). Audio files play with the iPhone on silent;
 // iOS speech doesn't. Run on a Mac after changing phrases.js:  node tools/make-audio.mjs
 import { execFileSync } from 'node:child_process';
@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'n
 import { PHRASES } from '../phrases.js';
 
 const sub = (s, f) => s.replaceAll('{p}', f ? 'ค่ะ' : 'ครับ').replaceAll('{i}', f ? 'ฉัน' : 'ผม');
-const texts = [...new Set(PHRASES.flatMap(([, list]) => list.flatMap(([, th]) => [sub(th, false), sub(th, true)])))];
+const texts = [...new Set(PHRASES.flatMap(([, list]) => list.flatMap(([, th, , isan]) => [th, isan].filter(Boolean).flatMap((t) => [sub(t, false), sub(t, true)]))))];
 mkdirSync('audio', { recursive: true });
 const list = {};
 for (const t of texts) {
