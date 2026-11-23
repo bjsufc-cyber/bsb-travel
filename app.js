@@ -148,49 +148,83 @@ const planFields = () => [
 ];
 
 /* ---------- converter ---------- */
+// rate.rate = baht per £1 (may be set by hand). rate.rates = market rates per £1 for the other currencies.
 const rate = JSON.parse(localStorage.getItem('bsb.rate') || '{"rate":43.5,"at":0,"manual":false}');
 const saveRate = () => localStorage.setItem('bsb.rate', JSON.stringify(rate));
+const ROUGH = { EUR: 1.15, RON: 5.85, USD: 1.32 };
+const CUR = { thb: ['THB', 'Thai baht', '฿'], gbp: ['GBP', 'British pounds', '£'], eur: ['EUR', 'Euros', '€'], ron: ['RON', 'Romanian lei', ' lei'], usd: ['USD', 'US dollars', '$'] };
+const perGBP = (c) => c === 'gbp' ? 1 : c === 'thb' ? rate.rate : rate.rates?.[CUR[c][0]] || ROUGH[CUR[c][0]];
+const withSym = (c, s) => c === 'ron' ? s + ' lei' : CUR[c][2] + s;
+// The converter always opens on ฿ and £; other currencies last until the app is closed.
+const cv = { from: ui.dir === 'gbp' ? 'gbp' : 'thb' }; cv.to = cv.from === 'thb' ? 'gbp' : 'thb';
+const isDefault = () => [cv.from, cv.to].sort().join() === 'gbp,thb';
 let amount = '';
 async function refreshRate(force) {
-  if ((rate.manual && !force) || (!force && Date.now() - rate.at < 6 * 36e5)) return 'skip';
-  const tryGet = async (url, pick) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw 0; const v = pick(await r.json()); if (!(v[0] > 10 && v[0] < 200)) throw 0; return v; };
+  if (!force && rate.rates && (rate.manual || Date.now() - rate.at < 6 * 36e5)) return 'skip';
+  const tryGet = async (url, pick) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw 0; const v = pick(await r.json()); if (!(v[0].THB > 10 && v[0].THB < 200)) throw 0; return v; };
   try {
-    const [v, pub] = await tryGet('https://open.er-api.com/v6/latest/GBP', (j) => [j.rates.THB, j.time_last_update_unix * 1000])
-      .catch(() => tryGet('https://api.frankfurter.app/latest?from=GBP&to=THB', (j) => [j.rates.THB, Date.parse(j.date + 'T12:00:00Z')]));
-    rate.rate = v; rate.pub = pub || Date.now(); rate.at = Date.now(); rate.manual = false; saveRate(); if (ui.tab === 'convert') paintConvert();
+    const [all, pub] = await tryGet('https://open.er-api.com/v6/latest/GBP', (j) => [j.rates, j.time_last_update_unix * 1000])
+      .catch(() => tryGet('https://api.frankfurter.app/latest?from=GBP&to=THB,EUR,RON,USD', (j) => [j.rates, Date.parse(j.date + 'T12:00:00Z')]));
+    rate.rates = Object.fromEntries(Object.keys(ROUGH).filter((k) => all[k] > 0).map((k) => [k, all[k]]));
+    if (force || !rate.manual) { rate.rate = all.THB; rate.pub = pub || Date.now(); rate.at = Date.now(); rate.manual = false; }
+    saveRate(); if (ui.tab === 'convert') paintConvert();
     return 'ok';
   } catch { return 'fail'; }
 }
-const money = (n, cur) => cur === 'thb' ? '฿' + n.toLocaleString('en-GB', { maximumFractionDigits: n < 20 ? 2 : 0 }) : '£' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (n, cur) => withSym(cur, cur === 'thb' ? n.toLocaleString('en-GB', { maximumFractionDigits: n < 20 ? 2 : 0 }) : n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const pubDay = (t) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 const age = (at) => { if (!at) return 'not updated yet'; const m = (Date.now() - at) / 6e4; return m < 60 ? 'updated just now' : m < 1440 ? `updated ${Math.floor(m / 60)}h ago` : `updated ${Math.floor(m / 1440)}d ago`; };
 
+const euStars = Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6, x = 15 + 8.6 * Math.sin(a), y = 15 - 8.6 * Math.cos(a);
+  return Array.from({ length: 10 }, (_, k) => { const r = k % 2 ? 0.62 : 1.55, b = k * Math.PI / 5; return `${(x + r * Math.sin(b)).toFixed(2)},${(y - r * Math.cos(b)).toFixed(2)}`; }).join(' '); });
 const FLAG = {
   thb: '<svg class="flag" viewBox="0 0 30 30" aria-hidden="true"><path fill="#A51931" d="M0 0h30v30H0z"/><path fill="#F4F5F8" d="M0 5h30v20H0z"/><path fill="#2D2A4A" d="M0 10h30v10H0z"/></svg>',
   gbp: '<svg class="flag" viewBox="15 0 30 30" aria-hidden="true"><clipPath id="uj"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uj)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg>',
+  eur: `<svg class="flag" viewBox="0 0 30 30" aria-hidden="true"><path fill="#003399" d="M0 0h30v30H0z"/>${euStars.map((p) => `<polygon fill="#FFCC00" points="${p}"/>`).join('')}</svg>`,
+  ron: '<svg class="flag" viewBox="0 0 30 30" aria-hidden="true"><path fill="#002B7F" d="M0 0h10v30H0z"/><path fill="#FCD116" d="M10 0h10v30H10z"/><path fill="#CE1126" d="M20 0h10v30H20z"/></svg>',
+  usd: `<svg class="flag" viewBox="0 0 30 30" aria-hidden="true"><path fill="#fff" d="M0 0h30v30H0z"/>${[0, 2, 4, 6, 8, 10, 12].map((i) => `<path fill="#B22234" d="M0 ${(i * 30 / 13).toFixed(2)}h30v${(30 / 13).toFixed(2)}H0z"/>`).join('')}<path fill="#3C3B6E" d="M0 0h15v16.15H0z"/>${[[3, 3], [7.5, 3], [12, 3], [5.25, 6.5], [9.75, 6.5], [3, 10], [7.5, 10], [12, 10], [5.25, 13.3], [9.75, 13.3]].map(([x, y]) => `<circle fill="#fff" cx="${x}" cy="${y}" r=".9"/>`).join('')}</svg>`,
 };
-const CUR = { thb: ['THB', 'Thai baht', '฿'], gbp: ['GBP', 'Pounds', '£'] };
-const curRow = (cur, value) => `${FLAG[cur]}<div class="grow"><small>${CUR[cur][0]} · ${CUR[cur][1]}</small><b>${value}</b></div>`;
+const curRow = (cur, value) => `${FLAG[cur]}<div class="grow"><small>${CUR[cur][0]} · ${CUR[cur][1]} <svg class="chev" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></small><b>${value}</b></div>`;
+function rateLine() {
+  const thbPair = cv.from === 'thb' || cv.to === 'thb', base = thbPair ? (cv.from === 'thb' ? cv.to : cv.from) : cv.from, other = base === cv.from ? cv.to : cv.from;
+  const v = perGBP(other) / perGBP(base), shown = withSym(other, v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: v < 2 ? 4 : 2 }));
+  const note = isDefault() && rate.manual ? 'set by you' : rate.rates ? (rate.pub ? 'rate for ' + pubDay(rate.pub) : age(rate.at)) : 'rough rate, not updated yet';
+  return `${base === 'ron' ? '1 leu' : withSym(base, '1')} = ${shown} · ${note}`;
+}
 function paintConvert() {
-  const from = ui.dir, to = from === 'thb' ? 'gbp' : 'thb', n = parseFloat(amount) || 0;
-  const out = from === 'thb' ? n / rate.rate : n * rate.rate;
-  $('#cfrom').innerHTML = curRow(from, CUR[from][2] + esc(amount ? amount.replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0'));
-  $('#cto').innerHTML = curRow(to, money(out, to));
-  $('#crate').textContent = `£1 = ฿${rate.rate.toFixed(2)} · ${rate.manual ? 'set by you' : rate.pub ? 'rate for ' + pubDay(rate.pub) : age(rate.at)}`;
+  const n = parseFloat(amount) || 0, out = n / perGBP(cv.from) * perGBP(cv.to);
+  $('#cfrom').innerHTML = curRow(cv.from, esc(withSym(cv.from, amount ? amount.replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0')));
+  $('#cto').innerHTML = curRow(cv.to, money(out, cv.to));
+  $('#crate').textContent = rateLine();
+}
+function pickCurrency(side) {
+  const cur = cv[side];
+  sheet.innerHTML = `<div class="panel"><header><button type="button" class="link" data-x>Cancel</button><b>Choose currency</b><span class="link"></span></header>
+    <ul class="list picker">${Object.keys(CUR).map((c) => `<li><button class="row" data-cur="${c}">${FLAG[c]}<div class="grow"><b>${CUR[c][1]}</b><small>${CUR[c][0]}</small></div>${c === cur ? '<span class="curon">✓</span>' : ''}</button></li>`).join('')}</ul></div>`;
+  sheet.hidden = false; document.body.classList.add('locked');
+  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  sheet.onclick = (e) => {
+    const b = e.target.closest('[data-cur]');
+    if (b) { const other = side === 'from' ? 'to' : 'from'; if (b.dataset.cur === cv[other]) cv[other] = cv[side]; cv[side] = b.dataset.cur; if (side === 'from' && b.dataset.cur !== cur) amount = ''; if (isDefault()) { ui.dir = cv.from; saveUi(); } close(); renderConvert(); }
+    else if (e.target === sheet || e.target.closest('[data-x]')) close();
+  };
 }
 function renderConvert() {
-  const quick = ui.dir === 'thb' ? [20, 50, 100, 200, 500, 1000, 2000, 5000] : [1, 5, 10, 20, 50, 100, 200, 500];
+  const quick = cv.from === 'thb' ? [20, 50, 100, 200, 500, 1000, 2000, 5000] : cv.from === 'ron' ? [5, 10, 20, 50, 100, 200, 500, 1000] : [1, 5, 10, 20, 50, 100, 200, 500];
   view.innerHTML = `<div class="conv">
-    <div class="disp"><div id="cfrom" class="from"></div><button id="swap" aria-label="Swap currencies">⇅</button><div id="cto" class="to"></div></div>
+    <div class="disp"><div id="cfrom" class="from" role="button" aria-label="Change currency"></div><button id="swap" aria-label="Swap currencies">⇅</button><div id="cto" class="to" role="button" aria-label="Change currency"></div></div>
     <div class="raterow"><button id="crate" class="rate"></button><button id="cref" class="refresh" aria-label="Refresh rate">↻</button></div>
-    <div class="quick">${quick.map((q) => `<button data-q="${q}">${ui.dir === 'thb' ? '฿' : '£'}${q.toLocaleString('en-GB')}</button>`).join('')}</div>
+    ${isDefault() ? '' : '<button id="cdef" class="backdef">Back to ฿ and £</button>'}
+    <div class="quick">${quick.map((q) => `<button data-q="${q}">${esc(withSym(cv.from, q.toLocaleString('en-GB')))}</button>`).join('')}</div>
     <div class="pad">${['AC', '⌫', '⇅', '7', '8', '9', '4', '5', '6', '1', '2', '3', '00', '0', '.'].map((k) => `<button data-k="${k}" class="${/\d|\./.test(k) ? '' : 'fn'}" aria-label="${{ AC: 'Clear', '⌫': 'Delete', '⇅': 'Swap currencies' }[k] || k}">${k}</button>`).join('')}</div></div>`;
   paintConvert(); refreshRate();
-  const swap = () => { ui.dir = ui.dir === 'thb' ? 'gbp' : 'thb'; saveUi(); renderConvert(); };
+  const swap = () => { [cv.from, cv.to] = [cv.to, cv.from]; if (isDefault()) { ui.dir = cv.from; saveUi(); } renderConvert(); };
   const digit = (k) => { if (amount.replace('.', '').length < 9 && !/\.\d\d$/.test(amount)) amount = amount === '0' ? k : amount + k; };
   $('.conv').onclick = (e) => {
+    const row = e.target.closest('#cfrom, #cto'); if (row) return pickCurrency(row.id === 'cfrom' ? 'from' : 'to');
     const b = e.target.closest('button'); if (!b) return;
     if (b.id === 'swap' || b.dataset.k === '⇅') return swap();
+    if (b.id === 'cdef') { cv.from = ui.dir === 'gbp' ? 'gbp' : 'thb'; cv.to = cv.from === 'thb' ? 'gbp' : 'thb'; amount = ''; return renderConvert(); }
     if (b.dataset.q) amount = b.dataset.q;
     else if (b.dataset.k) {
       const k = b.dataset.k;
@@ -208,11 +242,11 @@ function renderConvert() {
     b.classList.remove('spin'); paintConvert();
     toast(res === 'ok' ? wasManual ? 'Back to the market rate' : 'Rate updated' : 'No connection. Keeping the last rate');
   };
-  $('#crate').onclick = () => openSheet({
+  $('#crate').onclick = () => isDefault() ? openSheet({
     title: 'Exchange rate', rec: { rate: rate.rate.toFixed(2), manual: rate.manual },
     fields: [{ k: 'rate', label: 'Baht for £1', type: 'number' }, { k: 'manual', label: 'Keep my rate (don\'t update automatically)', type: 'checkbox' }],
     onSave: (r) => { const v = parseFloat(r.rate); if (v > 0) { const changed = Math.abs(v - rate.rate) > 0.004; rate.rate = v; rate.manual = !!r.manual; if (changed && !r.manual) rate.at = Date.now(); saveRate(); } if (!rate.manual) refreshRate(true); renderConvert(); },
-  });
+  }) : toast('You can set your own rate for ฿ and £ only');
 }
 
 /* ---------- info ---------- */
@@ -250,6 +284,7 @@ const norm = (t) => t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ');
 // Extra English words people might search for, so 'loo' finds the toilet.
 const SYN = { 'Hello / goodbye': 'hi bye greeting', 'Thank you': 'thanks cheers', 'Sorry / excuse me': 'apologise pardon', 'How much is this?': 'price cost', 'Too expensive': 'price cost dear', 'Can you lower the price?': 'discount cheaper bargain haggle', 'Can I pay by card?': 'credit debit payment', 'No bag, thanks': 'plastic carrier', 'Not spicy': 'chilli hot mild', 'A little spicy': 'chilli hot medium', 'No chilli (for the child)': 'spicy hot kid baby bella isabella', 'Delicious': 'tasty good food', 'The bill, please': 'check pay cheque restaurant', 'Water': 'drink bottle', 'No ice': 'drink cold', 'No sugar': 'sweet drink', 'Takeaway': 'take away to go', 'Please take me here': 'taxi driver grab address', 'Please use the meter': 'taxi driver fare', 'Stop here, please': 'taxi driver drop', 'Where is the toilet?': 'loo bathroom restroom wc', 'Turn left / turn right': 'directions driver', 'Straight on': 'ahead directions driver', 'Airport': 'flight plane', 'How long does it take?': 'time minutes', 'She is two years old': 'age bella isabella baby child kid', 'Do you have a high chair?': 'baby bella isabella restaurant', 'Do you have a child seat?': 'car seat baby taxi', 'Nappies': 'diapers baby', 'Milk': 'baby drink', 'Help!': 'emergency', 'Please call an ambulance': 'emergency doctor', 'Hospital': 'doctor emergency sick ill', 'Pharmacy': 'chemist medicine drugstore', '{i} am allergic to…': 'allergy nuts', '{i} am lost': 'directions help', '1, 2, 3, 4, 5': 'one two three four five', '6, 7, 8, 9, 10': 'six seven eight nine ten', '20 / 50': 'twenty fifty', '100 / 500': 'hundred', '1,000': 'thousand' };
 function renderTranslate() {
+  loadClips();
   const f = ui.female, sub = (s, rom) => s.replaceAll('{p}', rom ? (f ? 'kha' : 'khrap') : (f ? 'ค่ะ' : 'ครับ')).replaceAll('{i}', rom ? (f ? 'chan' : 'phom') : (f ? 'ฉัน' : 'ผม'));
   const en = (t) => sub(t, true).replace('chan', 'I').replace('phom', 'I');
   view.innerHTML = `<div class="seg two"><button data-voice="m" class="${f ? '' : 'on'}">Ben says (khrap)</button><button data-voice="f" class="${f ? 'on' : ''}">Stefania says (kha)</button></div>
@@ -310,7 +345,7 @@ function renderMore() {
       <button class="btn small ghost" id="settoken">${S.cfg.token ? 'Replace token' : 'Add token'}</button></div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v12</p>`;
+      <p class="count">BSB Travel · v13</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -323,12 +358,28 @@ function renderMore() {
     $('#signout').onclick = () => openSheet({ title: 'Sign out of this phone?', rec: {}, fields: [], saveLabel: 'Sign out', onSave: () => { S.wipe(); location.reload(); } });
   }
 }
-function say(text) {
+// Recorded clips (audio/) play with the phone on silent; iOS speech is muted by the silent switch,
+// so it is only the fallback. Clips are turned into blob URLs up front so a tap can play at once.
+const clip = new Audio(); const clipUrl = {};
+let clipsLoading;
+function loadClips() {
+  clipsLoading ??= fetch('audio/list.json').then((r) => r.json()).then((list) => Promise.all(Object.entries(list).map(([t, f]) =>
+    fetch('audio/' + f).then((r) => r.ok ? r.blob() : null).then((b) => { if (b) clipUrl[t] = URL.createObjectURL(b); }).catch(() => {})))).catch(() => { clipsLoading = null; });
+}
+function speak(text) {
   if (!('speechSynthesis' in window)) return toast('No speech on this device');
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; u.rate = 0.85;
   const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-').startsWith('th')); if (v) u.voice = v;
   speechSynthesis.speak(u);
+}
+function say(text) {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  const url = clipUrl[text]; loadClips();
+  if (!url) return speak(text);
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  clip.pause(); clip.src = url; clip.currentTime = 0;
+  clip.play().catch(() => speak(text));
 }
 
 /* ---------- editor sheet ---------- */

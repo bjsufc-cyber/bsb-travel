@@ -228,3 +228,7 @@ input, textarea, select { width: 100%; background: color-mix(in srgb, var(--surf
 #driver small { font-size: 16px; color: #555; } #driver .th { font-size: clamp(26px, 8.5vw, 44px); font-weight: 700; line-height: 1.4; white-space: pre-wrap; }
 #driver .en { font-size: 16px; color: #333; } #driver em { color: #999; font-size: 13px; margin-top: 12px; }
 #toast { position: fixed; left: 50%; bottom: calc(var(--sab) + 84px); transform: translateX(-50%); background: #17182c; color: #fff; padding: 8px 16px; border-radius: 99px; font-size: 14px; z-index: 30; }
+.disp .from, .disp .to { cursor: pointer; padding-right: 54px; } .chev { width: 9px; height: 6px; margin-left: 3px; vertical-align: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.backdef { align-self: center; color: var(--accent); font-size: 13.5px; font-weight: 600; padding: 2px 12px; margin-top: -6px; }
+.picker .row { width: 100%; text-align: left; } .picker li + li { border-top: 1px solid var(--line); } .picker small { display: block; color: var(--muted); font-size: 12.5px; }
+.picker .flag { width: 32px; height: 32px; } .curon { color: var(--accent); font-weight: 700; font-size: 18px; }
