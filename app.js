@@ -273,15 +273,30 @@ const infoFields = [
   { k: 'map', label: 'Address for the map', type: 'text' },
   { k: 'th', label: 'Address in Thai (for the driver card)', type: 'textarea' },
 ];
-function showDriver(x) {
+// Full-screen white card (driver address, phrase, message). Close with the X or a swipe to the right.
+function openCard(html, onButton) {
   const d = $('#driver');
-  d.innerHTML = `<small>กรุณาพาไปที่นี่ · Please take us here</small><div class="th">${esc(x.th)}</div><div class="en">${esc(x.title)}${x.map ? '<br>' + esc(x.map) : ''}</div>${x.phone ? `<div class="en">โทร ${esc(x.phone)}</div>` : ''}
-    <div class="dcopy"><button data-c="th">Copy Thai address</button>${x.map ? '<button data-c="en">Copy English address</button>' : ''}</div><em>Tap anywhere else to close</em>`;
-  d.hidden = false;
-  d.onclick = (e) => {
-    const b = e.target.closest('[data-c]'); if (!b) return (d.hidden = true);
-    copyText(b.dataset.c === 'th' ? x.th : x.map);
+  d.innerHTML = `<button class="dclose" data-close aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>${html}`;
+  d.style.transform = ''; d.style.transition = ''; d.hidden = false;
+  const close = () => { d.hidden = true; d.innerHTML = ''; d.style.transform = ''; };
+  d.onclick = (e) => { if (e.target.closest('[data-close]')) return close(); const b = e.target.closest('[data-c]'); if (b) onButton(b.dataset.c); };
+  let x0, y0, dx, live;
+  d.ontouchstart = (e) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; live = null; d.style.transition = 'none'; };
+  d.ontouchmove = (e) => {
+    const t = e.touches[0]; dx = t.clientX - x0; const dy = t.clientY - y0;
+    if (live === null && Math.abs(dx) + Math.abs(dy) > 10) live = dx > 0 && Math.abs(dx) > Math.abs(dy);
+    if (live) { e.preventDefault(); d.style.transform = `translateX(${Math.max(0, dx)}px)`; }
   };
+  d.ontouchend = () => {
+    if (!live) return;
+    d.style.transition = 'transform .25s ease';
+    if (dx > 90) { d.style.transform = 'translateX(100%)'; setTimeout(close, 230); } else d.style.transform = '';
+  };
+}
+function showDriver(x) {
+  openCard(`<small>กรุณาพาไปที่นี่ · Please take us here</small><div class="th">${esc(x.th)}</div><div class="en">${esc(x.title)}${x.map ? '<br>' + esc(x.map) : ''}</div>${x.phone ? `<div class="en">โทร ${esc(x.phone)}</div>` : ''}
+    <div class="dcopy"><button data-c="th">Copy Thai address</button>${x.map ? '<button data-c="en">Copy English address</button>' : ''}</div><em>Swipe right or tap ✕ to close</em>`,
+    (c) => copyText(c === 'th' ? x.th : x.map));
 }
 // Copy to the clipboard, with an older fallback for when the clipboard API says no.
 function copyText(t) {
@@ -302,11 +317,9 @@ const voiceBar = () => `<div class="voicebar"><div class="seg two"><button data-
   <button class="isanbtn ${ui.isaan ? 'on' : ''}" data-isan aria-pressed="${!!ui.isaan}">Isaan</button></div>`;
 
 function showCard({ head, th, ro, en, more = '' }) {
-  const d = $('#driver');
-  d.innerHTML = `<small>${esc(head)}</small><div class="th">${esc(th)}</div>${ro ? `<div class="ro">${esc(ro)}</div>` : ''}${en ? `<div class="en">${esc(en)}</div>` : ''}${more}
-    <div class="dcopy row"><button data-c="play">▶ Play</button><button data-c="th">Copy Thai</button></div><em>Tap anywhere else to close</em>`;
-  d.hidden = false;
-  d.onclick = (e) => { const b = e.target.closest('[data-c]'); if (!b) return (d.hidden = true); if (b.dataset.c === 'play') say(th); else copyText(th); };
+  openCard(`<small>${esc(head)}</small><div class="th">${esc(th)}</div>${ro ? `<div class="ro">${esc(ro)}</div>` : ''}${en ? `<div class="en">${esc(en)}</div>` : ''}${more}
+    <div class="dcopy row"><button data-c="play">▶ Play</button><button data-c="th">Copy Thai</button></div><em>Swipe right or tap ✕ to close</em>`,
+    (c) => (c === 'play' ? say(th) : copyText(th)));
 }
 
 // One call to Claude with your own key (More, Settings). Returns the JSON object described by `props`.
@@ -376,7 +389,7 @@ function renderTranslate() {
   if (ui.tsub === 'phrases') {
     body = voiceBar() + `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="tq" type="search" placeholder="Search in English, e.g. toilet, spicy, how much" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(ui.tq || '')}"><button id="tqx" aria-label="Clear search" hidden>✕</button></div>
       <p class="count" id="tcount"></p>` + PHRASES.map(([cat, list], gi) => `<section class="pgroup"><h3>${esc(cat)}</h3><ul class="list">${list.map(([e], pi) => { const p = phraseAt(gi, pi);
-        return `<li class="row phrase" data-say="${esc(p.th)}" data-k="${esc(norm(p.en + ' ' + cat + ' ' + (SYN[e] || '') + (p.isan ? ' isaan' : '')))}"><div class="grow"><div class="s">${esc(p.en)}${p.isan ? ' <span class="isantag">Isaan</span>' : ''}</div><div class="th">${esc(p.th)}</div><div class="ro">${esc(p.ro)}</div></div><button class="showbtn" data-show="${gi}.${pi}">Show</button></li>`; }).join('')}</ul></section>`).join('') +
+        return `<li class="row phrase" data-say="${esc(p.th)}" data-k="${esc(norm(p.en + ' ' + cat + ' ' + (SYN[e] || '') + (p.isan ? ' isaan' : '')))}"><div class="grow"><div class="s">${esc(p.en)}${p.isan ? ' <span class="isantag">Isaan</span>' : ''}</div><div class="th">${esc(p.th)}</div><div class="ro">${esc(p.ro)}</div></div><button class="playbtn" data-say="${esc(p.th)}" aria-label="Play"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg></button><button class="showbtn" data-show="${gi}.${pi}">Show</button></li>`; }).join('')}</ul></section>`).join('') +
       `<p class="empty" id="tnone" hidden>No phrases match. Try a simpler word.</p>`;
   } else if (ui.tsub === 'write') {
     const saved = S.all('msg').sort((a, b) => b.u - a.u), hasKey = !!S.cfg.claude, th2en = ui.wdir === 'th2en';
@@ -498,7 +511,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v18</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v19</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -521,29 +534,35 @@ function loadClips() {
   clipsLoading ??= fetch('audio/list.json').then((r) => r.json()).then((list) => Promise.all(Object.entries(list).map(([t, f]) =>
     fetch('audio/' + f).then((r) => r.ok ? r.blob() : null).then((b) => { if (b) clipUrl[t] = URL.createObjectURL(b); }).catch(() => {})))).catch(() => { clipsLoading = null; });
 }
-// iPhone mutes speech on silent but not media playback. Playing a silent track (looped) while speaking
-// puts the phone into media playback, so the speech is heard on silent too. Must start inside the tap.
-const hush = new Audio((() => { const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o, t) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
-  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
-  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })());
-hush.loop = true; hush.setAttribute('playsinline', '');
 function speak(text) {
   if (!('speechSynthesis' in window)) return toast('No speech on this device');
   speechSynthesis.cancel();
-  hush.currentTime = 0; hush.play().catch(() => {});
   const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; u.rate = 0.85;
   const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-').startsWith('th')); if (v) u.voice = v;
-  const stop = () => hush.pause(); u.onend = stop; u.onerror = stop; setTimeout(stop, 30000);
   speechSynthesis.speak(u);
+}
+// Google's Thai voice as an mp3, for text with no recorded clip (own messages). Audio files play
+// with the iPhone on silent; iOS speech doesn't. Long text is sent in parts of up to 180 characters.
+const ttsUrl = (t) => 'https://translate.google.com/translate_tts?ie=UTF-8&tl=th&client=tw-ob&q=' + encodeURIComponent(t);
+function parts(text) {
+  const out = []; let cur = '';
+  const pieces = text.replace(/[\n…]+/g, ' ').split(/(?<=[\s.,!?])/).flatMap((w) => w.match(/[^]{1,180}/g) || []);
+  for (const w of pieces) { if ((cur + w).length > 180) { out.push(cur); cur = ''; } cur += w; }
+  return [...out, cur].map((x) => x.trim()).filter(Boolean);
+}
+function playQueue(list, text) {
+  clip.onended = () => { list.shift(); if (list.length) { clip.src = list[0]; clip.play().catch(() => {}); } else clip.onended = null; };
+  clip.onerror = () => { clip.onended = clip.onerror = null; speak(text); };
+  clip.pause(); clip.src = list[0]; clip.currentTime = 0;
+  clip.play().catch(() => { clip.onended = clip.onerror = null; speak(text); });
 }
 function say(text) {
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
   const url = clipUrl[text]; loadClips();
-  if (!url) return speak(text);
-  if ('speechSynthesis' in window) speechSynthesis.cancel(); hush.pause();
-  clip.pause(); clip.src = url; clip.currentTime = 0;
-  clip.play().catch(() => speak(text));
+  if (url) return playQueue([url], text);
+  if (navigator.onLine) return playQueue(parts(text).map(ttsUrl), text);
+  speak(text);
 }
 
 /* ---------- editor sheet ---------- */

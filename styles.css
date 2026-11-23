@@ -257,3 +257,8 @@ h3[id^="cat-"] { scroll-margin-top: calc(var(--sat) + 62px); }
 #driver { overflow-y: auto; }
 .aboutlogo { display: block; width: 64px; height: 64px; border-radius: 15px; margin: 18px auto 6px; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
 .aboutlogo + .count { text-align: center; }
+/* v19: close button on the white card, play button on phrases */
+#driver .dclose { position: absolute; top: calc(var(--sat) + 14px); right: 16px; width: 44px; height: 44px; border-radius: 99px; background: #eef0f4; color: #2D2A4A; display: grid; place-items: center; }
+#driver .dclose:active { background: #dfe2ea; }
+.playbtn { flex: none; align-self: center; width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center; margin-right: 6px; color: var(--on-fill); background: var(--fill); }
+.playbtn:active { opacity: .7; }
