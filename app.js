@@ -498,7 +498,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v17</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v18</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -521,18 +521,27 @@ function loadClips() {
   clipsLoading ??= fetch('audio/list.json').then((r) => r.json()).then((list) => Promise.all(Object.entries(list).map(([t, f]) =>
     fetch('audio/' + f).then((r) => r.ok ? r.blob() : null).then((b) => { if (b) clipUrl[t] = URL.createObjectURL(b); }).catch(() => {})))).catch(() => { clipsLoading = null; });
 }
+// iPhone mutes speech on silent but not media playback. Playing a silent track (looped) while speaking
+// puts the phone into media playback, so the speech is heard on silent too. Must start inside the tap.
+const hush = new Audio((() => { const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o, t) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })());
+hush.loop = true; hush.setAttribute('playsinline', '');
 function speak(text) {
   if (!('speechSynthesis' in window)) return toast('No speech on this device');
   speechSynthesis.cancel();
+  hush.currentTime = 0; hush.play().catch(() => {});
   const u = new SpeechSynthesisUtterance(text); u.lang = 'th-TH'; u.rate = 0.85;
   const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-').startsWith('th')); if (v) u.voice = v;
+  const stop = () => hush.pause(); u.onend = stop; u.onerror = stop; setTimeout(stop, 30000);
   speechSynthesis.speak(u);
 }
 function say(text) {
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
   const url = clipUrl[text]; loadClips();
   if (!url) return speak(text);
-  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if ('speechSynthesis' in window) speechSynthesis.cancel(); hush.pause();
   clip.pause(); clip.src = url; clip.currentTime = 0;
   clip.play().catch(() => speak(text));
 }
