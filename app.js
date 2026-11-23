@@ -260,7 +260,7 @@ function infoHTML() {
         <header><div class="grow"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</div><button class="pencil" data-edit="${x.id}" aria-label="Edit">✎</button></header>
         ${x.ref ? `<button class="ref" data-copy="${esc(x.ref)}"><small>${esc(x.reflabel || 'Reference')}</small>${esc(x.ref)}</button>` : ''}
         ${x.body ? `<p>${esc(x.body)}</p>` : ''}
-        <div class="actions">${x.th ? `<button data-driver="${x.id}">Show the driver</button>` : ''}${x.phone ? `<a href="tel:${esc(x.phone.replace(/[^+\d]/g, ''))}">Call ${esc(x.phone)}</a>` : ''}${x.map ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`).join('') : '';
+        <div class="actions">${x.th ? `<button data-driver="${x.id}">Show the driver</button>` : ''}${x.phone ? `<a href="tel:${esc(x.phone.replace(/[^+\d]/g, ''))}">Call ${esc(x.phone)}</a>` : ''}${x.map ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`).join('') : '';
     }).join('') + `<button class="btn ghost" data-add="info">Add a booking or note</button>`;
 }
 const infoFields = [
