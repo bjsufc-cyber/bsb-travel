@@ -55,7 +55,7 @@ function render() {
 
 /* ---------- setup ---------- */
 function renderSetup() {
-  view.innerHTML = `<div class="setup"><img src="icons/icon-192.png" alt=""><h2>BSB Travel</h2>
+  view.innerHTML = `<div class="setup"><img src="icons/logo-192.png" alt=""><h2>BSB Travel</h2>
     <p>Enter the family passphrase to unlock the trip on this phone.</p>
     <input id="pass" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Passphrase">
     <input id="tok" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="GitHub token (needed to save changes)">
@@ -309,29 +309,62 @@ function showCard({ head, th, ro, en, more = '' }) {
   d.onclick = (e) => { const b = e.target.closest('[data-c]'); if (!b) return (d.hidden = true); if (b.dataset.c === 'play') say(th); else copyText(th); };
 }
 
-async function claudeTranslate(text) {
-  const schema = { type: 'object', additionalProperties: false, required: ['th', 'rom', 'back', 'note'], properties: {
-    th: { type: 'string', description: 'The message in Thai script' },
-    rom: { type: 'string', description: 'Easy romanisation for an English speaker, no tone marks' },
-    back: { type: 'string', description: 'Literal translation of the Thai back into English, so the sender can check the meaning' },
-    note: { type: 'string', description: 'One short sentence if anything was unclear, changed or culturally awkward; otherwise empty' } } };
-  const system = `You translate short messages from a British family travelling in Thailand (Ben, Stefania and their two-year-old Bella) into Thai, to show or send to Thai people: drivers, hosts, hotel and restaurant staff, shopkeepers, neighbours.
-Write natural, polite, simple Thai that a local would actually say. The speaker is ${ui.female ? 'a woman: use ค่ะ / คะ and ดิฉัน or ฉัน' : 'a man: use ครับ and ผม'}.
-${ui.isaan ? 'Write in Isan (the north-east dialect spoken in Udon Thani and Nong Khai), in Thai script, using everyday Isan words such as บ่, แม่น, เด้อ, ไส, หลาย where a local would, but keep it easy to understand.' : 'Write in standard Central Thai.'}
-Keep names, numbers, times and addresses exactly as given. Do not add anything that was not in the message.`;
+// One call to Claude with your own key (More, Settings). Returns the JSON object described by `props`.
+// A saved message or photo you received: show the English, and the suggested reply if there is one.
+function showRead(m) {
+  const nl = (t) => esc(t).replace(/\n/g, '<br>');
+  sheet.innerHTML = `<div class="panel"><header><button type="button" class="link" data-x>Close</button><b>${m.kind === 'photo' ? 'Photo' : 'Message'}</b><span class="link"></span></header>
+    <p class="body">${nl(m.en)}</p>${m.warn ? `<p class="warn">${nl(m.warn)}</p>` : ''}${m.th ? `<p class="hint">${nl(m.th)}</p>` : ''}
+    ${m.reply_th ? `<div class="card reply"><small>Suggested reply</small><div class="th">${esc(m.reply_th)}</div>${m.reply_rom ? `<div class="ro">${esc(m.reply_rom)}</div>` : ''}<p class="hint">Means: ${esc(m.reply_en)}</p><div class="actions"><button data-rc>Copy reply</button><button data-rs>Show</button></div></div>` : ''}</div>`;
+  sheet.hidden = false; document.body.classList.add('locked');
+  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  sheet.onclick = (e) => {
+    if (e.target.closest('[data-rc]')) copyText(m.reply_th);
+    else if (e.target.closest('[data-rs]')) { close(); showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: m.reply_th, ro: m.reply_rom, en: m.reply_en }); }
+    else if (e.target === sheet || e.target.closest('[data-x]')) close();
+  };
+}
+async function askClaude(system, content, props) {
+  const schema = { type: 'object', additionalProperties: false, required: Object.keys(props), properties: Object.fromEntries(Object.entries(props).map(([k, d]) => [k, { type: 'string', description: d }])) };
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': S.cfg.claude, 'anthropic-version': '2026-10-21', 'anthropic-beta': 'server-side-fallback-2026-07-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 4000, fallbacks: 'default', system, output_config: { effort: 'low', format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content: text }] }),
+    body: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 6000, fallbacks: 'default', system, output_config: { effort: 'low', format: { type: 'json_schema', schema } }, messages: [{ role: 'user', content }] }),
   });
   if (res.status === 401 || res.status === 403) throw new Error('The Claude key was not accepted. Check it in More, Settings.');
   if (res.status === 429 || res.status >= 500) throw new Error('Claude is busy. Try again in a moment.');
-  if (!res.ok) throw new Error(`Translation failed (${res.status}).`);
+  if (!res.ok) { let m = ''; try { m = (await res.json()).error?.message || ''; } catch {} throw new Error(`Translation failed (${res.status})${m ? ': ' + m : '.'}`); }
   const j = await res.json();
-  if (j.stop_reason === 'refusal') throw new Error('Claude would not translate that message.');
+  if (j.stop_reason === 'refusal') throw new Error('Claude would not translate that.');
   const t = j.content?.find((c) => c.type === 'text')?.text;
   if (!t) throw new Error('No translation came back. Try again.');
   return JSON.parse(t);
+}
+const WHO = 'a British family travelling in Thailand: Ben, Stefania and their two-year-old daughter Bella';
+const speaker = () => ui.female ? 'a woman (use ค่ะ / คะ and ดิฉัน or ฉัน)' : 'a man (use ครับ and ผม)';
+const dialect = () => ui.isaan ? 'Isan (the north-east dialect of Udon Thani and Nong Khai), in Thai script, using everyday Isan words such as บ่, แม่น, เด้อ, ไส, หลาย where a local would, but easy to understand' : 'standard Central Thai';
+const toThai = (text) => askClaude(`You translate short messages from ${WHO} into Thai, to show or send to Thai people: drivers, hosts, hotel and restaurant staff, shopkeepers, neighbours.
+Write natural, polite, simple ${dialect()} that a local would actually say. The speaker is ${speaker()}.
+Keep names, numbers, times and addresses exactly as given. Do not add anything that was not in the message.`, text,
+  { th: 'The message in Thai script', rom: 'Easy romanisation for an English speaker, no tone marks', back: 'Literal translation of the Thai back into English, so the sender can check the meaning', note: 'One short sentence if anything was unclear, changed or culturally awkward; otherwise empty' });
+const fromThai = (text) => askClaude(`You help ${WHO} understand Thai messages they receive, for example on LINE or WhatsApp from a host, driver or neighbour. The message may be Central Thai or Isan.
+Translate it into natural British English. Then suggest a short, polite reply they could send back, written in ${dialect()} by ${speaker()}. If no reply is needed, leave the reply fields empty.`, text,
+  { en: 'The message in natural British English', note: 'One short sentence on anything to be aware of (tone, a request, a time or price); otherwise empty', reply_en: 'Suggested reply in English, or empty', reply_th: 'The suggested reply in Thai script, or empty', reply_rom: 'Easy romanisation of the reply, or empty' });
+const readPhoto = (dataUrl) => askClaude(`You help ${WHO} understand Thai text in photos: menus, signs, medicine and baby product labels, notices, receipts and screenshots of messages. Reply in plain British English, concise, with line breaks.
+For a menu, list the dishes with a short description and say which are very spicy or not suitable for a two-year-old.
+For medicine, food or child products, put the dose, age range, allergens and warnings exactly as printed in "warn". If a dose for a two-year-old is not printed, say so and advise asking the pharmacist. Never invent a dose.`,
+  [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: dataUrl.split(',')[1] } }, { type: 'text', text: 'What does this say?' }],
+  { what: 'A few words on what this is, e.g. "Restaurant menu" or "Children\'s paracetamol"', en: 'The useful content translated and explained in English', warn: 'Safety information for medicine, food or child products; otherwise empty', th: 'The main Thai text read from the photo, short (first lines if long)' });
+// Phone photos are big: shrink to 1568px on the long side as a JPEG before sending.
+function shrinkPhoto(file) {
+  return new Promise((ok, fail) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const s = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.85)); };
+    img.onerror = () => { URL.revokeObjectURL(url); fail(new Error('Could not open that photo.')); };
+    img.src = url;
+  });
 }
 
 let draft = null; // the current translation on the Write screen
@@ -346,13 +379,15 @@ function renderTranslate() {
         return `<li class="row phrase" data-say="${esc(p.th)}" data-k="${esc(norm(p.en + ' ' + cat + ' ' + (SYN[e] || '') + (p.isan ? ' isaan' : '')))}"><div class="grow"><div class="s">${esc(p.en)}${p.isan ? ' <span class="isantag">Isaan</span>' : ''}</div><div class="th">${esc(p.th)}</div><div class="ro">${esc(p.ro)}</div></div><button class="showbtn" data-show="${gi}.${pi}">Show</button></li>`; }).join('')}</ul></section>`).join('') +
       `<p class="empty" id="tnone" hidden>No phrases match. Try a simpler word.</p>`;
   } else if (ui.tsub === 'write') {
-    const saved = S.all('msg').sort((a, b) => b.u - a.u), hasKey = !!S.cfg.claude;
-    body = voiceBar() + `<div class="card write"><textarea id="wen" rows="3" placeholder="Type in English, e.g. Could you open the gate at 7am tomorrow?">${esc(ui.wd || '')}</textarea>
-      ${hasKey ? '<button class="btn" id="wgo">Translate</button>' : `<a class="btn" id="wgoogle" target="_blank" rel="noopener">Translate with Google</a>
-        <p class="hint">Copy the Thai from Google, then paste it here. Add a Claude key in More, Settings to translate right here instead.</p>
-        <textarea id="wth" rows="2" placeholder="Paste the Thai here"></textarea><button class="btn ghost" id="wsavep">Save</button>`}</div>
+    const saved = S.all('msg').sort((a, b) => b.u - a.u), hasKey = !!S.cfg.claude, th2en = ui.wdir === 'th2en';
+    body = voiceBar() + `<div class="card write"><div class="seg two dirseg"><button data-wdir="en2th" class="${th2en ? '' : 'on'}">English → Thai</button><button data-wdir="th2en" class="${th2en ? 'on' : ''}">Thai → English</button></div>
+      <textarea id="wen" rows="3" placeholder="${th2en ? 'Paste a Thai message, e.g. from LINE or WhatsApp' : 'Type in English, e.g. Could you open the gate at 7am tomorrow?'}">${esc((th2en ? ui.wdt : ui.wd) || '')}</textarea>
+      <div class="wbtns">${hasKey ? '<button class="btn" id="wgo">Translate</button>' : '<a class="btn" id="wgoogle" target="_blank" rel="noopener">Translate with Google</a>'}<button class="btn ghost" id="wphoto" aria-label="Read a photo">📷 Photo</button></div>
+      <input type="file" id="wfile" accept="image/*" hidden>
+      ${hasKey ? '' : `<p class="hint">${th2en ? 'Google opens in a new tab.' : 'Copy the Thai from Google, then paste it below.'} Add a Claude key in More, Settings to translate and read photos right here.</p>${th2en ? '' : '<textarea id="wth" rows="2" placeholder="Paste the Thai here"></textarea><button class="btn ghost" id="wsavep">Save</button>'}`}</div>
       <div id="wout">${draft ? draftHTML() : ''}</div>
-      ${saved.length ? `<h3>Saved messages</h3><ul class="list">${saved.map((m) => `<li class="row msg" data-msg="${m.id}"><div class="grow"><div class="s">${esc(m.en)}${m.isan ? ' <span class="isantag">Isaan</span>' : ''}</div><div class="th">${esc(m.th)}</div>${m.rom ? `<div class="ro">${esc(m.rom)}</div>` : ''}</div><button class="showbtn" data-mdel="${m.id}" aria-label="Delete">✕</button></li>`).join('')}</ul>` : '<p class="empty">Messages you save appear here, on both phones, and work offline.</p>'}`;
+      ${saved.length ? `<h3>Saved</h3><ul class="list">${saved.map((m) => { const read = m.kind === 'read' || m.kind === 'photo';
+        return `<li class="row msg" data-msg="${m.id}"><div class="grow"><div class="s">${m.kind === 'photo' ? '📷 ' : read ? '↩︎ ' : ''}${esc(m.en.split('\n')[0])}${m.isan ? ' <span class="isantag">Isaan</span>' : ''}</div>${m.th ? `<div class="th${read ? ' small' : ''}">${esc(m.th.split('\n')[0])}</div>` : ''}${m.rom ? `<div class="ro">${esc(m.rom)}</div>` : ''}</div><button class="showbtn" data-mdel="${m.id}" aria-label="Delete">✕</button></li>`; }).join('')}</ul>` : '<p class="empty">Messages and photos you save appear here, on both phones, and work offline.</p>'}`;
   } else {
     const order = (x) => { const i = CATS.indexOf(x.cat); return (i < 0 ? 99 : i) * 1000 + (x.order ?? 99); };
     const P = S.all('info').filter((x) => x.th).sort((a, b) => order(a) - order(b) || a.u - b.u);
@@ -367,8 +402,15 @@ function renderTranslate() {
   if (ui.tsub === 'phrases') wirePhrases(); else if (ui.tsub === 'write') wireWrite();
 }
 function draftHTML() {
-  return `<div class="card result"><div class="th">${esc(draft.th)}</div>${draft.rom ? `<div class="ro">${esc(draft.rom)}</div>` : ''}${draft.back ? `<p class="hint">Means: ${esc(draft.back)}</p>` : ''}${draft.note ? `<p class="hint">${esc(draft.note)}</p>` : ''}
-    <div class="actions"><button data-dshow>Show</button><button data-copy="${esc(draft.th)}">Copy Thai</button><button data-dsave>Save</button></div></div>`;
+  const d = draft, nl = (t) => esc(t).replace(/\n/g, '<br>');
+  if (d.mode === 'photo') return `<div class="card result"><img class="thumb" src="${d.img}" alt=""><b>${esc(d.what)}</b><p class="body">${nl(d.en)}</p>${d.warn ? `<p class="warn">${nl(d.warn)}</p>` : ''}
+    <div class="actions"><button data-dsave>Save</button>${d.th ? `<button data-copy="${esc(d.th)}">Copy Thai text</button>` : ''}</div></div>`;
+  if (d.mode === 'th2en') return `<div class="card result"><p class="body big">${nl(d.en)}</p>${d.note ? `<p class="hint">${esc(d.note)}</p>` : ''}
+    ${d.reply_th ? `<div class="reply"><small>Suggested reply</small><div class="th">${esc(d.reply_th)}</div>${d.reply_rom ? `<div class="ro">${esc(d.reply_rom)}</div>` : ''}<p class="hint">Means: ${esc(d.reply_en)}</p>
+      <div class="actions"><button data-copy="${esc(d.reply_th)}">Copy reply</button><button data-dshow>Show</button></div></div>` : ''}
+    <div class="actions"><button data-dsave>Save</button><button data-dreply>Write my own reply</button></div></div>`;
+  return `<div class="card result"><div class="th">${esc(d.th)}</div>${d.rom ? `<div class="ro">${esc(d.rom)}</div>` : ''}${d.back ? `<p class="hint">Means: ${esc(d.back)}</p>` : ''}${d.note ? `<p class="hint">${esc(d.note)}</p>` : ''}
+    <div class="actions"><button data-dshow>Show</button><button data-copy="${esc(d.th)}">Copy Thai</button><button data-dsave>Save</button></div></div>`;
 }
 function wirePhrases() {
   const inp = $('#tq'), x = $('#tqx');
@@ -390,26 +432,36 @@ function wirePhrases() {
   filter();
 }
 function wireWrite() {
-  const en = $('#wen');
-  en.oninput = () => { ui.wd = en.value; saveUi(); const g = $('#wgoogle'); if (g) g.href = googleUrl(); };
+  const en = $('#wen'), th2en = ui.wdir === 'th2en', key = th2en ? 'wdt' : 'wd';
+  en.oninput = () => { ui[key] = en.value; saveUi(); const g = $('#wgoogle'); if (g) g.href = googleUrl(); };
   const g = $('#wgoogle'); if (g) g.href = googleUrl();
-  const save = (m) => { S.put({ type: 'msg', en: m.en, th: m.th, rom: m.rom || '', back: m.back || '', isan: !!ui.isaan, female: !!ui.female }); ui.wd = ''; draft = null; saveUi(); toast('Saved on both phones'); render(); };
-  $('#wgo')?.addEventListener('click', async (e) => {
-    const b = e.currentTarget, text = en.value.trim(); if (!text || b.disabled) return;
-    if (!navigator.onLine) return toast('No connection. Translating needs signal');
-    b.disabled = true; b.textContent = 'Translating…';
-    try { draft = { en: text, ...(await claudeTranslate(text)) }; $('#wout').innerHTML = draftHTML(); }
-    catch (err) { toast(err instanceof TypeError ? 'No connection. Translating needs signal' : err.message || 'Translation failed'); }
-    b.disabled = false; b.textContent = 'Translate';
-  });
+  view.querySelectorAll('[data-wdir]').forEach((b) => (b.onclick = () => { ui.wdir = b.dataset.wdir; draft = null; saveUi(); render(); }));
+  const save = (m) => { S.put({ type: 'msg', ...m, isan: !!ui.isaan, female: !!ui.female }); if (!m.kind) ui.wd = ''; else if (m.kind === 'read') ui.wdt = ''; draft = null; saveUi(); toast('Saved on both phones'); render(); };
+  const busy = async (b, label, job) => {
+    if (b.disabled) return; if (!navigator.onLine) return toast('No connection. This needs signal');
+    const was = b.textContent; b.disabled = true; b.textContent = label;
+    try { draft = await job(); $('#wout').innerHTML = draftHTML(); $('#wout').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    catch (err) { toast(err instanceof TypeError ? 'No connection. This needs signal' : err.message || 'Something went wrong'); }
+    b.disabled = false; b.textContent = was;
+  };
+  $('#wgo')?.addEventListener('click', (e) => { const text = en.value.trim(); if (!text) return;
+    busy(e.currentTarget, 'Translating…', async () => th2en ? { mode: 'th2en', th: text, ...(await fromThai(text)) } : { mode: 'en2th', en: text, ...(await toThai(text)) }); });
+  $('#wphoto').onclick = () => S.cfg.claude ? $('#wfile').click() : toast('Add a Claude key in More, Settings to read photos');
+  $('#wfile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    busy($('#wphoto'), 'Reading…', async () => { const img = await shrinkPhoto(f); return { mode: 'photo', img, ...(await readPhoto(img)) }; }); };
   $('#wsavep')?.addEventListener('click', () => { const th = $('#wth').value.trim(), t = en.value.trim(); if (!th) return toast('Paste the Thai first'); save({ en: t || th, th }); });
   $('#wout').onclick = (e) => {
-    if (!draft) return;
-    if (e.target.closest('[data-dshow]')) showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: draft.th, ro: draft.rom, en: draft.en });
-    else if (e.target.closest('[data-dsave]')) save(draft);
+    const d = draft; if (!d) return;
+    if (e.target.closest('[data-dshow]')) d.mode === 'th2en' ? showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: d.reply_th, ro: d.reply_rom, en: d.reply_en }) : showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: d.th, ro: d.rom, en: d.en });
+    else if (e.target.closest('[data-dreply]')) { ui.wdir = 'en2th'; ui.wd = ''; draft = null; saveUi(); render(); $('#wen').focus(); }
+    else if (e.target.closest('[data-dsave]')) {
+      if (d.mode === 'photo') save({ kind: 'photo', en: d.what + '\n' + d.en, warn: d.warn || '', th: d.th || '' });
+      else if (d.mode === 'th2en') save({ kind: 'read', en: d.en, th: d.th, reply_th: d.reply_th || '', reply_rom: d.reply_rom || '', reply_en: d.reply_en || '' });
+      else save({ en: d.en, th: d.th, rom: d.rom || '', back: d.back || '' });
+    }
   };
 }
-const googleUrl = () => `https://translate.google.com/?sl=en&tl=th&op=translate&text=${encodeURIComponent($('#wen')?.value || '')}`;
+const googleUrl = () => { const th2en = ui.wdir === 'th2en'; return `https://translate.google.com/?sl=${th2en ? 'th' : 'en'}&tl=${th2en ? 'en' : 'th'}&op=translate&text=${encodeURIComponent($('#wen')?.value || '')}`; };
 
 /* ---------- more: lists, info, settings ---------- */
 function todoRow(x) {
@@ -446,7 +498,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <p class="count">BSB Travel · v16</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v17</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -521,7 +573,7 @@ view.addEventListener('click', (e) => {
   else if ((el = q('data-driver'))) showDriver(S.items[el.dataset.driver]);
   else if ((el = q('data-show'))) { const [g, i] = el.dataset.show.split('.').map(Number), p = phraseAt(g, i); showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: p.th, ro: p.ro, en: p.en }); }
   else if ((el = q('data-mdel'))) { const m = S.items[el.dataset.mdel]; openSheet({ title: 'Delete this message?', rec: {}, fields: [], saveLabel: 'Delete', onSave: () => { S.remove(m.id); render(); } }); }
-  else if ((el = q('data-msg'))) { const m = S.items[el.dataset.msg]; showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: m.th, ro: m.rom, en: m.en }); }
+  else if ((el = q('data-msg'))) { const m = S.items[el.dataset.msg]; m.kind ? showRead(m) : showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: m.th, ro: m.rom, en: m.en }); }
   else if ((el = q('data-say'))) say(el.dataset.say);
   else if ((el = q('data-jump'))) { e.preventDefault(); document.getElementById('cat-' + el.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); }
   else if ((el = q('data-add'))) editRecord(el.dataset.add === 'plan' ? { type: 'plan', title: '', date: el.dataset.date || '', leg: el.dataset.leg || '' } : { type: 'info', cat: 'Stays', title: '' }, true);
