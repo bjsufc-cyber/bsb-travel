@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { extname, join } from 'node:path';
 let content = existsSync(process.argv[2] || '') ? Buffer.from(readFileSync(process.argv[2])).toString('base64') : null;
 const sha = () => createHash('sha1').update(content || '').digest('hex');
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.json': 'application/json', '.m4a': 'audio/mp4' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.json': 'application/json', '.m4a': 'audio/mp4', '.mjs': 'text/javascript', '.pdf': 'application/pdf' };
 createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname.startsWith('/repos/')) {

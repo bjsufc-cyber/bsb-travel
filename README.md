@@ -7,6 +7,7 @@ A private family trip app that installs on the iPhone home screen and works offl
 - **Convert**: Thai baht and pounds, both ways, no ads
 - **Info**: bookings, references and "show the driver" address cards
 - **More**: to-do and packing lists, Thai phrases with audio
+- **Docs** (in More): e-visas, insurance, bookings and ID scans, stored in the phone's own storage (IndexedDB) and viewable offline. They are never synced or uploaded, so each phone adds its own copies.
 
 ## How the data is kept private
 

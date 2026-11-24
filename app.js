@@ -1,5 +1,6 @@
 import * as S from './store.js';
 import { PHRASES } from './phrases.js';
+import * as D from './docs.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -476,6 +477,109 @@ function wireWrite() {
 }
 const googleUrl = () => { const th2en = ui.wdir === 'th2en'; return `https://translate.google.com/?sl=${th2en ? 'th' : 'en'}&tl=${th2en ? 'en' : 'th'}&op=translate&text=${encodeURIComponent($('#wen')?.value || '')}`; };
 
+/* ---------- documents (this phone only) ---------- */
+let docRows = null, docKept = null;
+const docIcon = (r) => `<span class="dicon ${D.isPdf(r) ? 'pdf' : 'img'}">${D.isPdf(r) ? 'PDF' : 'IMG'}</span>`;
+function docsHTML() {
+  if (!docRows) return '<p class="empty">Loading…</p>';
+  const total = docRows.reduce((n, r) => n + (r.size || 0), 0);
+  const groups = [...D.GROUPS, ...new Set(docRows.map((r) => r.group).filter((g) => !D.GROUPS.includes(g)))];
+  return `<button class="btn" id="docadd">Add documents</button>
+    <p class="hint">PDFs or photos from the Files app. They stay on this phone only, are never synced, and open offline. iCloud Drive stays the master copy.</p>` +
+    (docRows.length ? groups.map((g) => {
+      const rows = docRows.filter((r) => r.group === g).sort((a, b) => a.name.localeCompare(b.name));
+      return rows.length ? `<h3>${esc(g)}</h3><ul class="list">${rows.map((r) => `<li class="row doc" data-doc="${r.id}">${docIcon(r)}<div class="grow"><div class="t">${esc(r.name)}</div><div class="s">${D.fmtSize(r.size || 0)} · added ${new Date(r.added).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div></div><button class="pencil" data-docedit="${r.id}" aria-label="Rename or delete">✎</button></li>`).join('')}</ul>` : '';
+    }).join('') : '<p class="empty center">No documents on this phone yet. Add the e-visas, insurance schedule, bookings and passport pages.</p>') +
+    (docRows.length ? `<p class="count">${docRows.length} document${docRows.length === 1 ? '' : 's'} · ${D.fmtSize(total)} on this phone${docKept ? ' · kept safe from clean-ups' : ''}</p>` : '');
+}
+async function loadDocs() {
+  try { docRows = await D.list(); docKept = await D.persisted(); } catch { docRows = []; toast('Could not open document storage'); }
+  const box = $('#docs'); if (!box) return;
+  box.innerHTML = docsHTML();
+  $('#docadd').onclick = () => pickDocs();
+}
+function pickDocs() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,image/*,.pdf';
+  inp.onchange = () => { const files = [...inp.files]; if (files.length) askDocDetails(files); };
+  inp.click();
+}
+function askDocDetails(files) {
+  const one = files.length === 1, opts = D.GROUPS.map((g) => [g, g]);
+  openSheet({
+    title: one ? 'Add document' : `Add ${files.length} documents`, saveLabel: 'Add',
+    rec: one ? { name: D.baseName(files[0].name), group: D.guessGroup(files[0].name) } : { group: 'auto' },
+    fields: one ? [{ k: 'name', label: 'Name', type: 'text', required: true }, { k: 'group', label: 'Section', type: 'select', options: opts }]
+      : [{ k: 'group', label: 'Section', type: 'select', options: [['auto', 'Guess from each file name'], ...opts] }],
+    onSave: async (out) => {
+      let n = 0;
+      for (const f of files) {
+        if (f.size > 40e6) { toast(`${f.name} is over 40 MB, skipped`); continue; }
+        try { await D.add(f, { name: one ? out.name : '', group: out.group === 'auto' ? D.guessGroup(f.name) : out.group }); n++; } catch { toast('This phone is out of space for documents'); break; }
+      }
+      docKept = await D.persist() || await D.persisted();
+      if (n) toast(n === 1 ? 'Saved on this phone' : `${n} saved on this phone`);
+      if (ui.tab === 'more' && ui.more === 'docs') loadDocs();
+    },
+  });
+}
+function editDoc(id) {
+  const r = docRows?.find((x) => x.id === id); if (!r) return;
+  openSheet({
+    title: 'Edit document', rec: { name: r.name, group: r.group },
+    fields: [{ k: 'name', label: 'Name', type: 'text', required: true }, { k: 'group', label: 'Section', type: 'select', options: D.GROUPS.map((g) => [g, g]) }],
+    onSave: async (out) => { await D.update(id, { name: out.name || r.name, group: out.group }); loadDocs(); },
+    onDelete: () => setTimeout(() => openSheet({ title: 'Delete from this phone?', rec: {}, fields: [], saveLabel: 'Delete', onSave: async () => { await D.remove(id); toast('Deleted from this phone'); loadDocs(); } })),
+  });
+}
+// Full-screen viewer. PDFs are drawn page by page with pdf.js (saved in the app, so it works
+// offline); Share hands the file to iOS for Files, Print, AirDrop or Mail.
+let viewUrl = null;
+function closeDoc() {
+  const v = $('#docview'); v.hidden = true; v.innerHTML = ''; document.body.classList.remove('locked');
+  if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
+}
+async function openDoc(id) {
+  const r = await D.getDoc(id).catch(() => null); if (!r?.blob) return toast('Could not open this document');
+  const v = $('#docview'), pdf = D.isPdf(r);
+  const ext = pdf ? '.pdf' : '.' + ((r.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
+  const file = new File([r.blob], r.name.replace(/[\\/:*?"<>|]/g, '-') + ext, { type: r.type || (pdf ? 'application/pdf' : 'image/jpeg') });
+  viewUrl = URL.createObjectURL(r.blob);
+  v.innerHTML = `<div class="dvbar chrome"><button data-dv="close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button><b>${esc(r.name)}</b><button data-dv="share">Share</button></div>
+    <div class="dvbody">${pdf ? '<p class="empty center">Opening…</p>' : `<img src="${viewUrl}" alt="${esc(r.name)}">`}</div>`;
+  v.hidden = false; document.body.classList.add('locked'); v.scrollTop = 0;
+  v.onclick = async (e) => {
+    const b = e.target.closest('[data-dv]'); if (!b) return;
+    if (b.dataset.dv === 'close') return closeDoc();
+    try {
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: r.name });
+      else { const a = document.createElement('a'); a.href = viewUrl; a.download = file.name; a.target = '_blank'; a.click(); }
+    } catch (err) { if (err?.name !== 'AbortError') toast('Could not share this file'); }
+  };
+  if (pdf) renderPdf(r.blob, $('.dvbody', v)).catch((err) => {
+    const body = $('.dvbody', v); if (!body) return;
+    body.innerHTML = `<p class="empty center">${err?.name === 'PasswordException' ? 'This PDF has a password.' : 'This PDF could not be shown here.'} Tap Share to open it in Files or Books.</p>`;
+  });
+}
+async function renderPdf(blob, box) {
+  const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }), doc = await task.promise;
+  box.innerHTML = '';
+  const width = Math.min(box.clientWidth || 360, 900), dpr = Math.min(window.devicePixelRatio || 1, 3);
+  for (let i = 1; i <= doc.numPages; i++) {
+    if (!box.isConnected) break;
+    const page = await doc.getPage(i), base = page.getViewport({ scale: 1 });
+    let scale = (width * dpr * 1.5) / base.width;
+    const maxPx = 12e6; if (base.width * base.height * scale * scale > maxPx) scale = Math.sqrt(maxPx / (base.width * base.height));
+    const vp = page.getViewport({ scale }), c = document.createElement('canvas');
+    c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+    box.appendChild(c);
+    await page.render({ canvasContext: c.getContext('2d'), canvas: c, viewport: vp }).promise;
+  }
+  task.destroy();
+}
+
 /* ---------- more: lists, info, settings ---------- */
 function todoRow(x) {
   return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}</div></li>`;
@@ -491,13 +595,15 @@ function setTheme(t) {
   document.querySelector('meta[name="theme-color"]').content = { night: '#0c0e24', temple: '#f3f1ed', andaman: '#05242b', jungle: '#0b1f14' }[t];
 }
 function renderMore() {
-  const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['info', 'Info'], ['settings', 'Settings']];
+  const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['docs', 'Docs'], ['info', 'Info'], ['settings', 'Settings']];
   let body = '';
   if (ui.more === 'todo' || ui.more === 'pack') {
     const rows = S.all('todo').filter((x) => x.list === ui.more).sort((a, b) => !!a.done - !!b.done || (a.order ?? 1e9) - (b.order ?? 1e9) || a.u - b.u);
     const left = rows.filter((x) => !x.done).length;
     body = `<form id="quickadd"><input id="qa" placeholder="${ui.more === 'todo' ? 'Add a to-do' : 'Add something to pack'}" enterkeyhint="done"><button class="btn small">Add</button></form>
       <p class="count">${left} left of ${rows.length}</p><ul class="list">${rows.map(todoRow).join('')}</ul>`;
+  } else if (ui.more === 'docs') {
+    body = `<div id="docs">${docsHTML()}</div>`;
   } else if (ui.more === 'info') {
     body = infoHTML();
   } else {
@@ -510,12 +616,13 @@ function renderMore() {
       <div class="card"><b>Claude translation</b><p>${S.cfg.claude ? 'A Claude key is saved on this phone. Translate, Write uses it to translate your own messages.' : 'Add your Claude API key to translate your own messages in Translate, Write. It stays on this phone only.'}</p>
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
-      <div class="card"><b>This phone</b><p>Signing out removes the trip data from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v19</p>`;
+      <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v20</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
   view.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => { setTheme(b.dataset.theme); render(); }));
+  if (ui.more === 'docs') loadDocs();
   const qa = $('#quickadd');
   if (qa) qa.onsubmit = (e) => { e.preventDefault(); const v = $('#qa').value.trim(); if (v) { S.put({ type: 'todo', list: ui.more, text: v }); setTimeout(() => $('#qa')?.focus()); } };
   if ($('#syncnow')) {
@@ -523,7 +630,7 @@ function renderMore() {
     $('#settoken').onclick = () => openSheet({ title: 'GitHub token', rec: { token: '' }, fields: [{ k: 'token', label: 'Paste the token', type: 'text' }], onSave: (r) => { if (r.token.trim()) { S.saveCfg({ token: r.token.trim() }); S.sync(); } } });
     $('#setclaude').onclick = () => openSheet({ title: 'Claude API key', rec: { key: '' }, fields: [{ k: 'key', label: 'Paste the key (starts sk-ant-)', type: 'text' }], onSave: (r) => { if (r.key.trim()) { S.saveCfg({ claude: r.key.trim() }); toast('Key saved on this phone'); render(); } } });
     if ($('#delclaude')) $('#delclaude').onclick = () => { S.saveCfg({ claude: '' }); render(); };
-    $('#signout').onclick = () => openSheet({ title: 'Sign out of this phone?', rec: {}, fields: [], saveLabel: 'Sign out', onSave: () => { S.wipe(); location.reload(); } });
+    $('#signout').onclick = () => openSheet({ title: 'Sign out of this phone?', rec: {}, fields: [], saveLabel: 'Sign out', onSave: async () => { S.wipe(); await D.clearAll(); location.reload(); } });
   }
 }
 // Recorded clips (audio/) play with the phone on silent; iOS speech is muted by the silent switch,
@@ -596,7 +703,9 @@ function editRecord(r, isNew) {
 view.addEventListener('click', (e) => {
   const q = (a) => e.target.closest(`[${a}]`);
   let el;
-  if ((el = q('data-tick'))) { const r = S.items[el.dataset.tick]; S.put({ ...r, done: !r.done }); }
+  if ((el = q('data-docedit'))) editDoc(el.dataset.docedit);
+  else if ((el = q('data-doc'))) openDoc(el.dataset.doc);
+  else if ((el = q('data-tick'))) { const r = S.items[el.dataset.tick]; S.put({ ...r, done: !r.done }); }
   else if ((el = q('data-copy'))) copyText(el.dataset.copy);
   else if ((el = q('data-driver'))) showDriver(S.items[el.dataset.driver]);
   else if ((el = q('data-show'))) { const [g, i] = el.dataset.show.split('.').map(Number), p = phraseAt(g, i); showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: p.th, ro: p.ro, en: p.en }); }
