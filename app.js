@@ -249,7 +249,10 @@ function renderConvert() {
     const b = e.target.closest('button'); if (!b) return;
     if (b.id === 'swap' || b.dataset.k === '⇅') return swap();
     if (b.id === 'cdef') { cv.from = ui.dir === 'gbp' ? 'gbp' : 'thb'; cv.to = cv.from === 'thb' ? 'gbp' : 'thb'; amount = ''; return renderConvert(); }
-    if (b.dataset.q) amount = b.dataset.q;
+    if (b.dataset.q) { // quick buttons add to the amount: ฿1,000 + ฿500 + ฿20 = ฿1,520
+      const sum = Math.round(((parseFloat(amount) || 0) + Number(b.dataset.q)) * 100) / 100;
+      if (sum < 1e9) amount = String(sum);
+    }
     else if (b.dataset.k) {
       const k = b.dataset.k;
       if (k === 'AC') amount = ''; else if (k === '⌫') amount = amount.slice(0, -1);
@@ -722,7 +725,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v24</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v25</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
