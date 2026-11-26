@@ -293,3 +293,15 @@ h3[id^="cat-"] { scroll-margin-top: calc(var(--sat) + 62px); }
 .panel.linked .lhead small { font-size: 15px; color: var(--accent); font-weight: 600; }
 .panel.linked .lhead p { margin: 4px 0 0; color: var(--muted); font-size: 15px; white-space: pre-wrap; }
 .panel.linked .lhead.done b { text-decoration: line-through; opacity: .6; }
+/* v22: fixes. Long words and links wrap instead of running off the card. */
+.row .t, .row .s, .card b, .card small, .card p, .ref, .lhead, .hero .where, .until, .lk, #driver .th, #driver .en, #driver .ro, .result, .panel .body { overflow-wrap: anywhere; }
+.disp b { white-space: nowrap; }
+/* The white card: when the text is taller than the screen it now starts at the top and scrolls, instead of losing its first lines. */
+#driver { justify-content: flex-start; padding-top: calc(var(--sat) + 64px); }
+#driver > small:first-of-type { margin-top: auto; } #driver > em:last-child { margin-bottom: auto; }
+/* Small controls keep their look but take a full 44px finger. */
+.tick, .add, .pencil, .refresh, .playbtn, .showbtn, .rate, .backdef, .link, .seg button, .chips a, .quick button, .actions button, .actions a, .btn.small, .isanbtn, .staybtn, .whens button { position: relative; }
+.tick::after, .add::after, .pencil::after, .refresh::after, .playbtn::after, .showbtn::after, .rate::after, .backdef::after, .link::after, .seg button::after, .chips a::after, .quick button::after, .actions button::after, .actions a::after, .btn.small::after, .isanbtn::after, .staybtn::after, .whens button::after { content: ""; position: absolute; inset: -6px 0; }
+.tick::after, .day .add::after { inset: -9px; } .add::after { inset: -7px; } .pencil::after, .refresh::after { inset: -5px; } .playbtn::after { inset: -5px -3px; }
+.rate::after, .backdef::after { inset: -10px 0; } .link::after { inset: -8px -6px; }
+.panel label.check { min-height: 44px; }

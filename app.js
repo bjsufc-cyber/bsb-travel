@@ -13,6 +13,7 @@ if (ui.more === 'thai') ui.more = 'info';
 ui.dir ??= 'thb'; ui.open ??= {};
 
 /* ---------- dates ---------- */
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = () => ymd(new Date());
@@ -42,14 +43,24 @@ function setTab(tab) { ui.tab = tab; saveUi(); render(); window.scrollTo(0, 0); 
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 $('#syncdot').addEventListener('click', () => { ui.tab = 'more'; ui.more = 'settings'; saveUi(); render(); S.sync(); });
 
+function paintDot() {
+  const st = S.status.state, dot = $('#syncdot');
+  dot.className = S.isDirty() && st !== 'syncing' ? (st === 'error' ? 'error' : 'pending') : st;
+  dot.setAttribute('aria-label', 'Sync: ' + ({ ok: 'up to date', syncing: 'syncing', offline: 'offline', error: 'problem', pending: 'changes waiting', idle: 'not synced yet' }[dot.className] || dot.className));
+}
+// One way to close the bottom sheet. If data changed underneath while it was open, redraw.
+let stale = false;
+function closeSheet() {
+  sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked');
+  if (stale) { stale = false; setTimeout(() => { if (sheet.hidden) render(); }); }
+}
 function render() {
   document.body.dataset.tab = S.cfg.pass ? ui.tab : 'setup';
   const order = ['today', 'plan', 'convert', 'translate', 'more'];
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === ui.tab));
   $('#tabs').style.setProperty('--i', order.indexOf(ui.tab));
   $('#title').textContent = $('#navtitle').textContent = { today: 'Today', plan: 'Plan', convert: 'Convert', translate: 'Translate', more: 'More' }[ui.tab];
-  const st = S.status.state, dot = $('#syncdot');
-  dot.className = S.isDirty() && st !== 'syncing' ? (st === 'error' ? 'error' : 'pending') : st;
+  paintDot();
   if (!S.cfg.pass) return renderSetup();
   ({ today: renderToday, plan: renderPlan, convert: renderConvert, translate: renderTranslate, more: renderMore }[ui.tab])();
 }
@@ -58,8 +69,8 @@ function render() {
 function renderSetup() {
   view.innerHTML = `<div class="setup"><img src="icons/logo-192.png" alt=""><h2>BSB Travel</h2>
     <p>Enter the family passphrase to unlock the trip on this phone.</p>
-    <input id="pass" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Passphrase">
-    <input id="tok" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="GitHub token (needed to save changes)">
+    <input id="pass" type="text" aria-label="Passphrase" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Passphrase">
+    <input id="tok" type="text" aria-label="GitHub token" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="GitHub token (needed to save changes)">
     <button class="btn" id="unlock">Unlock</button><p class="err" id="err"></p></div>`;
   $('#unlock').onclick = async () => {
     const b = $('#unlock'); b.disabled = true; b.textContent = 'Unlocking…';
@@ -71,7 +82,7 @@ function renderSetup() {
 /* ---------- today ---------- */
 function planRow(p, showDate) {
   return `<li class="row ${p.done ? 'done' : ''}" data-edit="${p.id}">
-    <button class="tick" data-tick="${p.id}" aria-label="Done">${p.done ? '✓' : ''}</button>
+    <button class="tick" data-tick="${p.id}" aria-label="Done" aria-pressed="${!!p.done}">${p.done ? '✓' : ''}</button>
     <div class="grow"><div class="t">${p.key ? '<i class="keydot"></i>' : ''}${esc(p.title)}</div>
     ${p.note ? `<div class="s">${esc(p.note)}</div>` : ''}${lkChip(p)}</div>
     <div class="time">${showDate && p.date ? esc(fmtDay(p.date, { day: 'numeric', month: 'short' })) + '<br>' : ''}${esc(p.time || '')}</div></li>`;
@@ -95,7 +106,7 @@ function renderToday() {
   if (!L.length) hero = `<div class="hero"><div class="where">No trip loaded yet</div></div>`;
   else {
     const c = next ? countdownParts(instant(next) - now) : null;
-    const where = t < start ? 'Countdown to take-off' : t > end ? 'Welcome home' : `${leg?.emoji || ''} ${esc(leg?.name || '')}`;
+    const where = t < start ? 'Countdown to take-off' : t > end ? 'Welcome home' : `${esc(leg?.emoji || '')} ${esc(leg?.name || '')}`;
     const sub = t < start ? `${fmtDay(start)} to ${fmtDay(end)}` : t > end ? '' :
       `Day ${daysBetween(start, t) + 1} of ${daysBetween(start, end) + 1}` + (leg && leg.to > leg.from ? ` · ${daysBetween(t, leg.to)} night${daysBetween(t, leg.to) === 1 ? "" : "s"} left here` : '');
     const stay = t >= start && t <= end ? currentStay(t, leg) : null;
@@ -105,9 +116,9 @@ function renderToday() {
       <div class="until">until <b>${esc(next.title)}</b><br>${esc(fmtDay(next.date))} at ${esc(next.time)}${linked(next) ? ' ›' : ''}</div></div>` : ''}</div>`;
   }
   const todays = plans().filter((p) => p.date === t).sort(byTime);
-  const todos = S.all('todo').filter((x) => x.list === 'todo' && !x.done).slice(0, 5);
+  const todos = S.all('todo').filter((x) => x.list === 'todo' && !x.done).sort(todoSort).slice(0, 5);
   view.innerHTML = hero + clocksHTML(now) +
-    `<h3>Today, ${esc(fmtDay(t))} <button class="add" data-add="plan" data-date="${t}">＋</button></h3>
+    `<h3>Today, ${esc(fmtDay(t))} <button class="add" data-add="plan" data-date="${t}" aria-label="Add a plan for today">＋</button></h3>
      ${todays.length ? `<ul class="list">${todays.map((p) => planRow(p)).join('')}</ul>` : `<p class="empty">Nothing planned today.</p>`}
      ${upcoming.length > 1 ? `<h3>Coming up</h3><ul class="list">${upcoming.slice(1, 6).map((p) =>
        `<li class="row" data-edit="${p.id}"><div class="grow"><div class="t">${esc(p.title)}</div><div class="s">${esc(fmtDay(p.date))} at ${esc(p.time)}</div></div><div class="time">${rel(instant(p) - now)}</div></li>`).join('')}</ul>` : ''}
@@ -125,18 +136,20 @@ function renderPlan() {
     if (open) {
       for (let d = l.from; d <= (l.to === l.from ? l.to : lastDay); d = addDays(d, 1)) {
         const items = P.filter((p) => p.date === d).sort(byTime);
-        days += `<div class="day ${d === t ? 'isToday' : ''}"><h4>${esc(fmtDay(d))}${d === t ? ' · today' : ''}<button class="add" data-add="plan" data-date="${d}">＋</button></h4>
+        days += `<div class="day ${d === t ? 'isToday' : ''}"><h4>${esc(fmtDay(d))}${d === t ? ' · today' : ''}<button class="add" data-add="plan" data-date="${d}" aria-label="Add a plan on ${esc(fmtDay(d))}">＋</button></h4>
           ${items.length ? `<ul class="list">${items.map((p) => planRow(p)).join('')}</ul>` : ''}</div>`;
       }
       const ideas = P.filter((p) => !p.date && p.leg === l.id).sort((a, b) => a.u - b.u);
-      days += `<div class="day ideas"><h4>Ideas, no date yet<button class="add" data-add="plan" data-leg="${l.id}">＋</button></h4>
+      days += `<div class="day ideas"><h4>Ideas, no date yet<button class="add" data-add="plan" data-leg="${l.id}" aria-label="Add an idea">＋</button></h4>
         ${ideas.length ? `<ul class="list">${ideas.map((p) => planRow(p)).join('')}</ul>` : ''}</div>`;
     }
     const n = P.filter((p) => (p.date && legFor(p.date) === l) || (!p.date && p.leg === l.id)).length;
-    return `<section class="leg ${open ? 'open' : ''}"><button class="leghead" data-leg="${l.id}">
-      <span class="em">${l.emoji || '📍'}</span><span class="grow"><b>${esc(l.name)}</b><small>${esc(fmtDay(l.from, { day: 'numeric', month: 'short' }))} to ${esc(fmtDay(l.to, { day: 'numeric', month: 'short' }))}${l.to > l.from ? ` · ${daysBetween(l.from, l.to)} night${daysBetween(l.from, l.to) === 1 ? "" : "s"}` : ''} · ${n} plans</small></span>
+    return `<section class="leg ${open ? 'open' : ''}"><button class="leghead" data-leg="${l.id}" aria-expanded="${open}">
+      <span class="em">${esc(l.emoji || '📍')}</span><span class="grow"><b>${esc(l.name)}</b><small>${esc(fmtDay(l.from, { day: 'numeric', month: 'short' }))} to ${esc(fmtDay(l.to, { day: 'numeric', month: 'short' }))}${l.to > l.from ? ` · ${daysBetween(l.from, l.to)} night${daysBetween(l.from, l.to) === 1 ? "" : "s"}` : ''} · ${n} plans</small></span>
       <span class="chev">${open ? '▾' : '▸'}</span></button>${days}</section>`;
   }).join('') || '<p class="empty">No trip loaded yet.</p>';
+  const other = P.filter((p) => p.date ? !legFor(p.date) : !L.some((l) => l.id === p.leg)).sort((a, b) => (a.date || '9').localeCompare(b.date || '9') || byTime(a, b));
+  if (L.length && other.length) view.insertAdjacentHTML('beforeend', `<h3>Other dates and ideas</h3><ul class="list">${other.map((p) => planRow(p, true)).join('')}</ul>`);
   view.querySelectorAll('.leghead').forEach((b) => (b.onclick = () => { const id = b.dataset.leg, l = L.find((x) => x.id === id); ui.open[id] = !(ui.open[id] ?? (l === cur)); saveUi(); render(); }));
 }
 
@@ -164,13 +177,15 @@ const cv = { from: ui.dir === 'gbp' ? 'gbp' : 'thb' }; cv.to = cv.from === 'thb'
 const isDefault = () => [cv.from, cv.to].sort().join() === 'gbp,thb';
 let amount = '';
 async function refreshRate(force) {
-  if (!force && rate.rates && (rate.manual || Date.now() - rate.at < 6 * 36e5)) return 'skip';
+  if (!force && rate.rates && Date.now() - (rate.rat ?? rate.at) < 6 * 36e5) return 'skip';
   const tryGet = async (url, pick) => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw 0; const v = pick(await r.json()); if (!(v[0].THB > 10 && v[0].THB < 200)) throw 0; return v; };
   try {
     const [all, pub] = await tryGet('https://open.er-api.com/v6/latest/GBP', (j) => [j.rates, j.time_last_update_unix * 1000])
       .catch(() => tryGet('https://api.frankfurter.app/latest?from=GBP&to=THB,EUR,RON,USD', (j) => [j.rates, Date.parse(j.date + 'T12:00:00Z')]));
     rate.rates = Object.fromEntries(Object.keys(ROUGH).filter((k) => all[k] > 0).map((k) => [k, all[k]]));
-    if (force || !rate.manual) { rate.rate = all.THB; rate.pub = pub || Date.now(); rate.at = Date.now(); rate.manual = false; }
+    rate.rat = Date.now();
+    // A rate typed in without the lock is kept for six hours, then the market rate takes over again.
+    if (force || !(rate.manual || (rate.own && Date.now() - rate.at < 6 * 36e5))) { rate.rate = all.THB; rate.pub = pub || Date.now(); rate.at = Date.now(); rate.manual = false; rate.own = false; }
     saveRate(); if (ui.tab === 'convert') paintConvert();
     return 'ok';
   } catch { return 'fail'; }
@@ -192,7 +207,7 @@ const curRow = (cur, value) => `${FLAG[cur]}<div class="grow"><small>${CUR[cur][
 function rateLine() {
   const thbPair = cv.from === 'thb' || cv.to === 'thb', base = thbPair ? (cv.from === 'thb' ? cv.to : cv.from) : cv.from, other = base === cv.from ? cv.to : cv.from;
   const v = perGBP(other) / perGBP(base), shown = withSym(other, v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: v < 2 ? 4 : 2 }));
-  const note = isDefault() && rate.manual ? 'set by you' : rate.rates ? (rate.pub ? 'rate for ' + pubDay(rate.pub) : age(rate.at)) : 'rough rate, not updated yet';
+  const note = isDefault() && (rate.manual || rate.own) ? (rate.manual ? 'set by you' : 'set by you for now') : rate.rates ? (rate.pub ? 'rate for ' + pubDay(rate.pub) : age(rate.at)) : 'rough rate, not updated yet';
   return `${base === 'ron' ? '1 leu' : withSym(base, '1')} = ${shown} · ${note}`;
 }
 function paintConvert() {
@@ -200,13 +215,14 @@ function paintConvert() {
   $('#cfrom').innerHTML = curRow(cv.from, esc(withSym(cv.from, amount ? amount.replace(/^(\d+)/, (d) => Number(d).toLocaleString('en-GB')) : '0')));
   $('#cto').innerHTML = curRow(cv.to, money(out, cv.to));
   $('#crate').textContent = rateLine();
+  view.querySelectorAll('.disp b').forEach((b) => { const len = b.textContent.length; b.style.fontSize = len > 13 ? '22px' : len > 11 ? '26px' : len > 9 ? '30px' : ''; });
 }
 function pickCurrency(side) {
   const cur = cv[side];
   sheet.innerHTML = `<div class="panel"><header><button type="button" class="link" data-x>Cancel</button><b>Choose currency</b><span class="link"></span></header>
     <ul class="list picker">${Object.keys(CUR).map((c) => `<li><button class="row" data-cur="${c}">${FLAG[c]}<div class="grow"><b>${CUR[c][1]}</b><small>${CUR[c][0]}</small></div>${c === cur ? '<span class="curon">✓</span>' : ''}</button></li>`).join('')}</ul></div>`;
   sheet.hidden = false; document.body.classList.add('locked');
-  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  const close = closeSheet;
   sheet.onclick = (e) => {
     const b = e.target.closest('[data-cur]');
     if (b) { const other = side === 'from' ? 'to' : 'from'; if (b.dataset.cur === cv[other]) cv[other] = cv[side]; cv[side] = b.dataset.cur; if (side === 'from' && b.dataset.cur !== cur) amount = ''; if (isDefault()) { ui.dir = cv.from; saveUi(); } close(); renderConvert(); }
@@ -249,7 +265,16 @@ function renderConvert() {
   $('#crate').onclick = () => isDefault() ? openSheet({
     title: 'Exchange rate', rec: { rate: rate.rate.toFixed(2), manual: rate.manual },
     fields: [{ k: 'rate', label: 'Baht for £1', type: 'number' }, { k: 'manual', label: 'Keep my rate (don\'t update automatically)', type: 'checkbox' }],
-    onSave: (r) => { const v = parseFloat(r.rate); if (v > 0) { const changed = Math.abs(v - rate.rate) > 0.004; rate.rate = v; rate.manual = !!r.manual; if (changed && !r.manual) rate.at = Date.now(); saveRate(); } if (!rate.manual) refreshRate(true); renderConvert(); },
+    onSave: (r) => {
+      const v = parseFloat(String(r.rate).replace(',', '.'));
+      if (!(v >= 10 && v <= 200)) return toast('Enter a rate between 10 and 200 baht');
+      const changed = Math.abs(v - rate.rate) > 0.004;
+      rate.rate = v; rate.manual = !!r.manual; rate.own = changed && !r.manual;
+      if (rate.own) rate.at = Date.now();
+      saveRate();
+      if (!rate.manual && !changed) refreshRate(true); // unticked and unchanged: back to the market rate
+      renderConvert();
+    },
   }) : toast('You can set your own rate for ฿ and £ only');
 }
 
@@ -293,7 +318,7 @@ function showLinked(r, x) {
     ${r ? `<div class="lhead${r.done ? ' done' : ''}"><b>${esc(r.title || r.text)}</b>${when ? `<small>${esc(when)}</small>` : ''}${r.note ? `<p>${esc(r.note)}</p>` : ''}</div>` : ''}
     ${infoCard(x)}</div>`;
   sheet.hidden = false; document.body.classList.add('locked');
-  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  const close = closeSheet;
   sheet.onclick = (e) => {
     const q = (a) => e.target.closest(`[${a}]`); let el;
     if (e.target === sheet || q('data-x')) close();
@@ -380,7 +405,7 @@ function showRead(m) {
     <p class="body">${nl(m.en)}</p>${m.warn ? `<p class="warn">${nl(m.warn)}</p>` : ''}${m.th ? `<p class="hint">${nl(m.th)}</p>` : ''}
     ${m.reply_th ? `<div class="card reply"><small>Suggested reply</small><div class="th">${esc(m.reply_th)}</div>${m.reply_rom ? `<div class="ro">${esc(m.reply_rom)}</div>` : ''}<p class="hint">Means: ${esc(m.reply_en)}</p><div class="actions"><button data-rc>Copy reply</button><button data-rs>Show</button></div></div>` : ''}</div>`;
   sheet.hidden = false; document.body.classList.add('locked');
-  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  const close = closeSheet;
   sheet.onclick = (e) => {
     if (e.target.closest('[data-rc]')) copyText(m.reply_th);
     else if (e.target.closest('[data-rs]')) { close(); showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: m.reply_th, ro: m.reply_rom, en: m.reply_en }); }
@@ -401,7 +426,7 @@ async function askClaude(system, content, props) {
   if (j.stop_reason === 'refusal') throw new Error('Claude would not translate that.');
   const t = j.content?.find((c) => c.type === 'text')?.text;
   if (!t) throw new Error('No translation came back. Try again.');
-  return JSON.parse(t);
+  try { return JSON.parse(t); } catch { throw new Error('The answer was cut short. Try again.'); }
 }
 const WHO = 'a British family travelling in Thailand: Ben, Stefania and their two-year-old daughter Bella';
 const speaker = () => ui.female ? 'a woman (use ค่ะ / คะ and ดิฉัน or ฉัน)' : 'a man (use ครับ and ผม)';
@@ -431,23 +456,24 @@ function shrinkPhoto(file) {
 }
 
 let draft = null; // the current translation on the Write screen
+let working = false; // a translation or photo is on its way
 function renderTranslate() {
   loadClips();
   ui.tsub ??= 'phrases';
   const segs = [['phrases', 'Phrases'], ['write', 'Write'], ['places', 'Places']];
   let body = '';
   if (ui.tsub === 'phrases') {
-    body = voiceBar() + `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="tq" type="search" placeholder="Search in English, e.g. toilet, spicy, how much" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(ui.tq || '')}"><button id="tqx" aria-label="Clear search" hidden>✕</button></div>
+    body = voiceBar() + `<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="tq" type="search" aria-label="Search phrases" placeholder="Search in English, e.g. toilet, spicy, how much" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="search" value="${esc(ui.tq || '')}"><button id="tqx" aria-label="Clear search" hidden>✕</button></div>
       <p class="count" id="tcount"></p>` + PHRASES.map(([cat, list], gi) => `<section class="pgroup"><h3>${esc(cat)}</h3><ul class="list">${list.map(([e], pi) => { const p = phraseAt(gi, pi);
         return `<li class="row phrase" data-say="${esc(p.th)}" data-k="${esc(norm(p.en + ' ' + cat + ' ' + (SYN[e] || '') + (p.isan ? ' isaan' : '')))}"><div class="grow"><div class="s">${esc(p.en)}${p.isan ? ' <span class="isantag">Isaan</span>' : ''}</div><div class="th">${esc(p.th)}</div><div class="ro">${esc(p.ro)}</div></div><button class="playbtn" data-say="${esc(p.th)}" aria-label="Play"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg></button><button class="showbtn" data-show="${gi}.${pi}">Show</button></li>`; }).join('')}</ul></section>`).join('') +
       `<p class="empty" id="tnone" hidden>No phrases match. Try a simpler word.</p>`;
   } else if (ui.tsub === 'write') {
     const saved = S.all('msg').sort((a, b) => b.u - a.u), hasKey = !!S.cfg.claude, th2en = ui.wdir === 'th2en';
     body = voiceBar() + `<div class="card write"><div class="seg two dirseg"><button data-wdir="en2th" class="${th2en ? '' : 'on'}">English → Thai</button><button data-wdir="th2en" class="${th2en ? 'on' : ''}">Thai → English</button></div>
-      <textarea id="wen" rows="3" placeholder="${th2en ? 'Paste a Thai message, e.g. from LINE or WhatsApp' : 'Type in English, e.g. Could you open the gate at 7am tomorrow?'}">${esc((th2en ? ui.wdt : ui.wd) || '')}</textarea>
+      <textarea id="wen" rows="3" aria-label="${th2en ? 'Thai message' : 'Message in English'}" placeholder="${th2en ? 'Paste a Thai message, e.g. from LINE or WhatsApp' : 'Type in English, e.g. Could you open the gate at 7am tomorrow?'}">${esc((th2en ? ui.wdt : ui.wd) || '')}</textarea>
       <div class="wbtns">${hasKey ? '<button class="btn" id="wgo">Translate</button>' : '<a class="btn" id="wgoogle" target="_blank" rel="noopener">Translate with Google</a>'}<button class="btn ghost" id="wphoto" aria-label="Read a photo">📷 Photo</button></div>
       <input type="file" id="wfile" accept="image/*" hidden>
-      ${hasKey ? '' : `<p class="hint">${th2en ? 'Google opens in a new tab.' : 'Copy the Thai from Google, then paste it below.'} Add a Claude key in More, Settings to translate and read photos right here.</p>${th2en ? '' : '<textarea id="wth" rows="2" placeholder="Paste the Thai here"></textarea><button class="btn ghost" id="wsavep">Save</button>'}`}</div>
+      ${hasKey ? '' : `<p class="hint">${th2en ? 'Google opens in a new tab.' : 'Copy the Thai from Google, then paste it below.'} Add a Claude key in More, Settings to translate and read photos right here.</p>${th2en ? '' : '<textarea id="wth" rows="2" aria-label="Thai text" placeholder="Paste the Thai here"></textarea><button class="btn ghost" id="wsavep">Save</button>'}`}</div>
       <div id="wout">${draft ? draftHTML() : ''}</div>
       ${saved.length ? `<h3>Saved</h3><ul class="list">${saved.map((m) => { const read = m.kind === 'read' || m.kind === 'photo';
         return `<li class="row msg" data-msg="${m.id}"><div class="grow"><div class="s">${m.kind === 'photo' ? '📷 ' : read ? '↩︎ ' : ''}${esc(m.en.split('\n')[0])}${m.isan ? ' <span class="isantag">Isaan</span>' : ''}</div>${m.th ? `<div class="th${read ? ' small' : ''}">${esc(m.th.split('\n')[0])}</div>` : ''}${m.rom ? `<div class="ro">${esc(m.rom)}</div>` : ''}</div><button class="showbtn" data-mdel="${m.id}" aria-label="Delete">✕</button></li>`; }).join('')}</ul>` : '<p class="empty">Messages and photos you save appear here, on both phones, and work offline.</p>'}`;
@@ -502,10 +528,13 @@ function wireWrite() {
   const save = (m) => { S.put({ type: 'msg', ...m, isan: !!ui.isaan, female: !!ui.female }); if (!m.kind) ui.wd = ''; else if (m.kind === 'read') ui.wdt = ''; draft = null; saveUi(); toast('Saved on both phones'); render(); };
   const busy = async (b, label, job) => {
     if (b.disabled) return; if (!navigator.onLine) return toast('No connection. This needs signal');
-    const was = b.textContent; b.disabled = true; b.textContent = label;
-    try { draft = await job(); $('#wout').innerHTML = draftHTML(); $('#wout').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    catch (err) { toast(err instanceof TypeError ? 'No connection. This needs signal' : err.message || 'Something went wrong'); }
-    b.disabled = false; b.textContent = was;
+    const was = b.textContent; b.disabled = true; b.textContent = label; working = true;
+    try {
+      draft = await job();
+      const out = $('#wout'); // gone if the tab was changed while waiting; the result shows on coming back
+      if (out) { out.innerHTML = draftHTML(); out.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'nearest' }); }
+    } catch (err) { toast(err instanceof TypeError ? 'No connection. This needs signal' : err.message || 'Something went wrong'); }
+    working = false; b.disabled = false; b.textContent = was;
   };
   $('#wgo')?.addEventListener('click', (e) => { const text = en.value.trim(); if (!text) return;
     busy(e.currentTarget, 'Translating…', async () => th2en ? { mode: 'th2en', th: text, ...(await fromThai(text)) } : { mode: 'en2th', en: text, ...(await toThai(text)) }); });
@@ -583,9 +612,10 @@ function editDoc(id) {
 }
 // Full-screen viewer. PDFs are drawn page by page with pdf.js (saved in the app, so it works
 // offline); Share hands the file to iOS for Files, Print, AirDrop or Mail.
-let viewUrl = null;
+let viewUrl = null, pdfDone = null;
 function closeDoc() {
   const v = $('#docview'); v.hidden = true; v.innerHTML = ''; document.body.classList.remove('locked');
+  pdfDone?.(); pdfDone = null;
   if (viewUrl) { URL.revokeObjectURL(viewUrl); viewUrl = null; }
 }
 async function openDoc(id) {
@@ -605,33 +635,54 @@ async function openDoc(id) {
       else { const a = document.createElement('a'); a.href = viewUrl; a.download = file.name; a.target = '_blank'; a.click(); }
     } catch (err) { if (err?.name !== 'AbortError') toast('Could not share this file'); }
   };
-  if (pdf) renderPdf(r.blob, $('.dvbody', v)).catch((err) => {
+  if (pdf) renderPdf(r.blob, $('.dvbody', v)).then((done) => { if (v.hidden) done(); else pdfDone = done; }).catch((err) => {
     const body = $('.dvbody', v); if (!body) return;
     body.innerHTML = `<p class="empty center">${err?.name === 'PasswordException' ? 'This PDF has a password.' : 'This PDF could not be shown here.'} Tap Share to open it in Files or Books.</p>`;
   });
 }
+// Pages are drawn only when they are near the screen and emptied again when far away: an iPhone
+// allows a web page a limited amount of canvas memory, and a 40-page policy drawn at once goes over it.
 async function renderPdf(blob, box) {
   const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('vendor/pdfjs/pdf.worker.min.mjs', location.href).href;
   const task = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }), doc = await task.promise;
   box.innerHTML = '';
   const width = Math.min(box.clientWidth || 360, 900), dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const first = (await doc.getPage(1)).getViewport({ scale: 1 }), jobs = new Map();
+  const draw = async (c) => {
+    if (jobs.has(c)) return;
+    const job = {}; jobs.set(c, job);
+    try {
+      const page = await doc.getPage(+c.dataset.page), base = page.getViewport({ scale: 1 });
+      if (jobs.get(c) !== job) return;
+      let scale = (width * dpr * 1.5) / base.width;
+      const maxPx = 12e6; if (base.width * base.height * scale * scale > maxPx) scale = Math.sqrt(maxPx / (base.width * base.height));
+      const vp = page.getViewport({ scale });
+      c.style.aspectRatio = `${base.width} / ${base.height}`; c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      job.render = page.render({ canvasContext: c.getContext('2d'), canvas: c, viewport: vp });
+      await job.render.promise;
+    } catch {}
+  };
+  const drop = (c) => { const job = jobs.get(c); if (!job) return; jobs.delete(c); job.render?.cancel(); c.width = c.height = 1; };
+  const io = new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? draw(e.target) : drop(e.target))), { root: $('#docview'), rootMargin: '150% 0px' });
   for (let i = 1; i <= doc.numPages; i++) {
-    if (!box.isConnected) break;
-    const page = await doc.getPage(i), base = page.getViewport({ scale: 1 });
-    let scale = (width * dpr * 1.5) / base.width;
-    const maxPx = 12e6; if (base.width * base.height * scale * scale > maxPx) scale = Math.sqrt(maxPx / (base.width * base.height));
-    const vp = page.getViewport({ scale }), c = document.createElement('canvas');
-    c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
-    box.appendChild(c);
-    await page.render({ canvasContext: c.getContext('2d'), canvas: c, viewport: vp }).promise;
+    const c = document.createElement('canvas');
+    c.dataset.page = i; c.width = c.height = 1; c.style.aspectRatio = `${first.width} / ${first.height}`;
+    box.appendChild(c); io.observe(c);
   }
-  task.destroy();
+  return () => { io.disconnect(); jobs.forEach((j) => j.render?.cancel()); jobs.clear(); task.destroy(); };
 }
 
 /* ---------- more: lists, info, settings ---------- */
+const todoSort = (a, b) => !!a.done - !!b.done || (a.order ?? 1e9) - (b.order ?? 1e9) || a.u - b.u;
+// Redraw only the rows and the count, so the box being typed in is left alone.
+function paintTodos() {
+  const rows = S.all('todo').filter((x) => x.list === ui.more).sort(todoSort), ul = $('#todolist');
+  $('#todocount').textContent = `${rows.filter((x) => !x.done).length} left of ${rows.length}`;
+  ul.innerHTML = rows.map(todoRow).join(''); ul.hidden = !rows.length;
+}
 function todoRow(x) {
-  return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}${lkChip(x)}</div></li>`;
+  return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done" aria-pressed="${!!x.done}">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}${lkChip(x)}</div></li>`;
 }
 const THEMES = [
   ['night', 'Night flight', 'linear-gradient(135deg,#2D2A4A,#3b4096 60%,#A51931)'],
@@ -647,10 +698,9 @@ function renderMore() {
   const seg = [['todo', 'To-do'], ['pack', 'Packing'], ['docs', 'Docs'], ['info', 'Info'], ['settings', 'Settings']];
   let body = '';
   if (ui.more === 'todo' || ui.more === 'pack') {
-    const rows = S.all('todo').filter((x) => x.list === ui.more).sort((a, b) => !!a.done - !!b.done || (a.order ?? 1e9) - (b.order ?? 1e9) || a.u - b.u);
-    const left = rows.filter((x) => !x.done).length;
-    body = `<form id="quickadd"><input id="qa" placeholder="${ui.more === 'todo' ? 'Add a to-do' : 'Add something to pack'}" enterkeyhint="done"><button class="btn small">Add</button></form>
-      <p class="count">${left} left of ${rows.length}</p><ul class="list">${rows.map(todoRow).join('')}</ul>`;
+    const label = ui.more === 'todo' ? 'Add a to-do' : 'Add something to pack';
+    body = `<form id="quickadd"><input id="qa" placeholder="${label}" aria-label="${label}" enterkeyhint="done"><button class="btn small">Add</button></form>
+      <p class="count" id="todocount"></p><ul class="list" id="todolist"></ul>`;
   } else if (ui.more === 'docs') {
     body = `<div id="docs">${docsHTML()}</div>`;
   } else if (ui.more === 'info') {
@@ -666,20 +716,20 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v21</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v22</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
   view.querySelectorAll('[data-theme]').forEach((b) => (b.onclick = () => { setTheme(b.dataset.theme); render(); }));
   if (ui.more === 'docs') loadDocs();
   const qa = $('#quickadd');
-  if (qa) qa.onsubmit = (e) => { e.preventDefault(); const v = $('#qa').value.trim(); if (v) { S.put({ type: 'todo', list: ui.more, text: v }); setTimeout(() => $('#qa')?.focus()); } };
+  if (qa) { paintTodos(); qa.onsubmit = (e) => { e.preventDefault(); const inp = $('#qa'), v = inp.value.trim(); if (v) { inp.value = ''; S.put({ type: 'todo', list: ui.more, text: v }); inp.focus(); } }; }
   if ($('#syncnow')) {
     $('#syncnow').onclick = () => S.sync();
     $('#settoken').onclick = () => openSheet({ title: 'GitHub token', rec: { token: '' }, fields: [{ k: 'token', label: 'Paste the token', type: 'text' }], onSave: (r) => { if (r.token.trim()) { S.saveCfg({ token: r.token.trim() }); S.sync(); } } });
     $('#setclaude').onclick = () => openSheet({ title: 'Claude API key', rec: { key: '' }, fields: [{ k: 'key', label: 'Paste the key (starts sk-ant-)', type: 'text' }], onSave: (r) => { if (r.key.trim()) { S.saveCfg({ claude: r.key.trim() }); toast('Key saved on this phone'); render(); } } });
     if ($('#delclaude')) $('#delclaude').onclick = () => { S.saveCfg({ claude: '' }); render(); };
-    $('#signout').onclick = () => openSheet({ title: 'Sign out of this phone?', rec: {}, fields: [], saveLabel: 'Sign out', onSave: async () => { S.wipe(); await D.clearAll(); location.reload(); } });
+    $('#signout').onclick = () => openSheet({ title: 'Sign out of this phone?', rec: {}, fields: [], saveLabel: 'Sign out', onSave: async () => { S.wipe(); localStorage.removeItem('bsb.ui'); await D.clearAll(); location.reload(); } });
   }
 }
 // Recorded clips (audio/) play with the phone on silent; iOS speech is muted by the silent switch,
@@ -730,22 +780,34 @@ function openSheet({ title, fields, rec, onSave, onDelete, saveLabel = 'Save' })
       `<input name="${f.k}" type="${f.type === 'number' ? 'text' : f.type}" ${f.type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(rec[f.k])}" ${f.required ? 'required' : ''}>`}</label>`).join('')}
     ${onDelete ? '<button type="button" class="btn danger" data-del>Delete</button>' : ''}</form>`;
   sheet.hidden = false; document.body.classList.add('locked');
-  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  const close = closeSheet;
   sheet.onclick = (e) => { if (e.target === sheet || e.target.closest('[data-x]')) close(); if (e.target.closest('[data-del]')) { onDelete(); close(); } };
   $('form', sheet).onsubmit = (e) => {
     e.preventDefault();
     const out = {};
     fields.forEach((f) => { const el = e.target.elements[f.k]; out[f.k] = f.type === 'checkbox' ? el.checked : el.value.trim(); });
+    const missing = fields.find((f) => f.required && !out[f.k]);
+    if (missing) { const el = e.target.elements[missing.k]; el.value = ''; el.focus(); return; }
     close(); onSave(out);
   };
 }
 function editRecord(r, isNew) {
   const def = { plan: ['plan', planFields()], info: ['booking or note', infoFields], todo: ['item', [{ k: 'text', label: 'What', type: 'text', required: true }, { k: 'note', label: 'Notes', type: 'textarea' }, { k: 'link', label: 'Booking (opens with the item)', type: 'select', options: linkOptions() }, { k: 'done', label: 'Done', type: 'checkbox' }]] }[r.type];
   if (!def) return;
+  let fields = def[1];
+  // A section this app doesn't list (added from the Mac) stays selectable, so saving doesn't move the booking.
+  if (r.type === 'info' && r.cat && !CATS.includes(r.cat)) fields = fields.map((f) => f.k === 'cat' ? { ...f, options: [...f.options, [r.cat, r.cat]] } : f);
   openSheet({
-    title: (isNew ? 'New ' : 'Edit ') + def[0], fields: def[1], rec: r,
-    onSave: (out) => { if (r.type === 'plan' && out.key && !(out.date && out.time)) out.key = false; S.put({ ...r, ...out }); },
-    onDelete: isNew ? null : () => S.remove(r.id),
+    title: (isNew ? 'New ' : 'Edit ') + def[0], fields, rec: r,
+    onSave: (out) => {
+      if (r.type === 'plan') {
+        if (out.key && !(out.date && out.time)) { out.key = false; toast('The countdown needs a date and a time'); }
+        // An idea must belong to a place, or it would show nowhere in Plan.
+        if (!out.date && !out.leg) out.leg = ((r.date && legFor(r.date)) || legFor(today()) || legs()[0])?.id || '';
+      }
+      S.put({ ...r, ...out });
+    },
+    onDelete: isNew ? null : () => setTimeout(() => openSheet({ title: `Delete this ${def[0]}?`, rec: {}, fields: [], saveLabel: 'Delete', onSave: () => { S.remove(r.id); toast('Deleted'); } })),
   });
 }
 
@@ -761,7 +823,7 @@ view.addEventListener('click', (e) => {
   else if ((el = q('data-mdel'))) { const m = S.items[el.dataset.mdel]; openSheet({ title: 'Delete this message?', rec: {}, fields: [], saveLabel: 'Delete', onSave: () => { S.remove(m.id); render(); } }); }
   else if ((el = q('data-msg'))) { const m = S.items[el.dataset.msg]; m.kind ? showRead(m) : showCard({ head: 'กรุณาอ่านข้อความนี้ · Please read this', th: m.th, ro: m.rom, en: m.en }); }
   else if ((el = q('data-say'))) say(el.dataset.say);
-  else if ((el = q('data-jump'))) { e.preventDefault(); document.getElementById('cat-' + el.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); }
+  else if ((el = q('data-jump'))) { e.preventDefault(); document.getElementById('cat-' + el.dataset.jump)?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth' }); }
   else if ((el = q('data-add'))) editRecord(el.dataset.add === 'plan' ? { type: 'plan', title: '', date: el.dataset.date || '', leg: el.dataset.leg || '' } : { type: 'info', cat: 'Stays', title: '' }, true);
   else if ((el = q('data-goto'))) gotoPlan(el.dataset.goto);
   else if ((el = q('data-info'))) showLinked(null, S.items[el.dataset.info]);
@@ -769,13 +831,39 @@ view.addEventListener('click', (e) => {
 });
 
 /* ---------- boot ---------- */
-S.onChange(() => { if (sheet.hidden && !((ui.tab === 'convert' || ui.tab === 'translate') && S.cfg.pass) && document.activeElement?.id !== 'qa') render(); else if (document.activeElement?.id === 'qa') { const v = ''; render(); $('#qa').value = v; $('#qa').focus(); } else document.body.dataset.sync = S.status.state; });
+const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+let seenRev = S.rev;
+S.onChange(() => {
+  paintDot();
+  if (!S.cfg.pass) return;
+  const changed = S.rev === undefined || S.rev !== seenRev; seenRev = S.rev;
+  if (ui.tab === 'more' && ui.more === 'settings' && sheet.hidden) return render(); // shows the sync status
+  if (!changed || ui.tab === 'convert') return;
+  if (!sheet.hidden) { stale = true; return; }
+  if (ui.tab === 'more' && $('#todolist')) return paintTodos();
+  if (ui.tab === 'translate' && (ui.tsub === 'phrases' || !ui.tsub || working || typing())) return;
+  render();
+});
 render();
 // The compact glass title bar appears once the large title has scrolled away.
 new IntersectionObserver(([e]) => { if (e.isIntersecting) delete document.body.dataset.scrolled; else document.body.dataset.scrolled = '1'; }).observe($('#sentinel'));
 S.sync();
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { S.sync(); refreshRate(); if (sheet.hidden) render(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return applyUpdate();
+  S.sync(); refreshRate(); swReg?.update().catch(() => {});
+  if (sheet.hidden && !typing() && !working) render();
+});
 window.addEventListener('online', () => S.sync());
 setInterval(() => { if (!document.hidden) { if (ui.tab === 'today' && sheet.hidden && S.cfg.pass) render(); } }, 30000);
 setInterval(() => { if (!document.hidden) S.sync(); }, 90000);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// New versions: iOS keeps a home-screen app open for days, so also check when the app comes back to the
+// front. Once the new files are saved, reload quietly the next time the app goes to the background.
+let swReg = null, updateReady = false;
+function applyUpdate() {
+  if (updateReady && document.hidden && sheet.hidden && $('#driver').hidden && $('#docview').hidden && !draft && !working) location.reload();
+}
+if ('serviceWorker' in navigator) {
+  let had = !!navigator.serviceWorker.controller; // false only on the very first install, which needs no reload
+  navigator.serviceWorker.register('sw.js').then((r) => (swReg = r)).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) { updateReady = true; applyUpdate(); } had = true; });
+}

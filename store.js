@@ -8,6 +8,7 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 
 export const cfg = read(LS.cfg, {});            // {pass, token, api?, owner?, repo?}
 export let items = read(LS.items, {});
+export let rev = 0;                             // goes up whenever the records change, so the app knows when to redraw
 let dirty = read(LS.dirty, false);
 export const status = { state: 'idle', last: read(LS.last, 0), error: '' };
 const listeners = new Set();
@@ -24,7 +25,7 @@ export function put(rec) {
 }
 export function remove(id) { if (items[id]) put({ id, type: items[id].type, del: true }); }
 function persist(markDirty) {
-  write(LS.items, items);
+  write(LS.items, items); rev++;
   if (markDirty) { dirty = true; write(LS.dirty, true); scheduleSync(2500); }
   emit();
 }
@@ -69,7 +70,7 @@ export function sync() {
       for (let attempt = 0; attempt < 4; attempt++) {
         const { remote, sha } = await pull();
         const { out, changedA, changedB } = merge(items, remote);
-        if (changedA) { items = out; write(LS.items, items); }
+        if (changedA) { items = out; write(LS.items, items); rev++; }
         if (!changedB) { dirty = false; write(LS.dirty, false); break; }
         if (!cfg.token) throw new Error('Add a GitHub token in Settings to save changes');
         const { url, branch } = repo();
@@ -95,7 +96,12 @@ export const isDirty = () => dirty;
 export async function unlock(pass, token) {
   const prev = { ...cfg };
   Object.assign(cfg, { pass, token });
-  try { const { remote } = await pull(pass); items = merge(items, remote).out; }
+  try {
+    const { remote, sha } = await pull(pass);
+    // No file means the passphrase can't be checked, and any passphrase would seem to work.
+    if (!sha) throw new Error('Could not find the trip data. Try again in a moment.');
+    items = merge(items, remote).out; rev++;
+  }
   catch (e) { Object.keys(cfg).forEach((k) => delete cfg[k]); Object.assign(cfg, prev); throw e; }
   write(LS.cfg, cfg); write(LS.items, items); status.state = 'ok'; status.last = Date.now(); write(LS.last, status.last); emit();
 }

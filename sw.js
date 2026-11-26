@@ -1,6 +1,6 @@
 // Offline shell. Online: always fetch the latest file (a cheap "has it changed?" request) so
 // updates show on the next open. Offline or slow: fall back to the saved copy.
-const CACHE = 'bsb-v21';
+const CACHE = 'bsb-v22';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'store.js', 'crypto.js', 'phrases.js', 'docs.js', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs', 'manifest.webmanifest', 'icons/logo-180.png', 'icons/logo-192.png', 'icons/logo-512.png', 'icons/flag-waves.svg'];
 // Thai audio clips (audio/list.json names them) are saved too, so phrases play offline.
 const save = (c, f) => fetch(f, { cache: 'reload' }).then((r) => r.ok && c.put(f, r));
