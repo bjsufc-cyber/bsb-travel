@@ -157,6 +157,7 @@ const planFields = () => [
   { k: 'title', label: 'What', type: 'text', required: true },
   { k: 'date', label: 'Date (leave empty for an idea)', type: 'date' },
   { k: 'time', label: 'Time', type: 'time' },
+  { k: 'tz', label: 'Time zone of that time (for the countdown)', type: 'select', options: [['+07:00', 'Thailand'], ['+00:00', 'UK'], ['+03:00', 'Bahrain']] },
   { k: 'leg', label: 'Place (for ideas without a date)', type: 'select', options: [['', 'Auto from date'], ...legs().map((l) => [l.id, l.name])] },
   { k: 'link', label: 'Booking (opens with the plan)', type: 'select', options: linkOptions() },
   { k: 'note', label: 'Notes', type: 'textarea' },
@@ -716,7 +717,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v22</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v23</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -796,6 +797,8 @@ function editRecord(r, isNew) {
   if (!def) return;
   let fields = def[1];
   // A section this app doesn't list (added from the Mac) stays selectable, so saving doesn't move the booking.
+  // The same for a time zone set from the Mac that is not one of the three choices.
+  if (r.type === 'plan' && r.tz && !fields.find((f) => f.k === 'tz').options.some(([v]) => v === r.tz)) fields = fields.map((f) => f.k === 'tz' ? { ...f, options: [...f.options, [r.tz, 'UTC' + r.tz]] } : f);
   if (r.type === 'info' && r.cat && !CATS.includes(r.cat)) fields = fields.map((f) => f.k === 'cat' ? { ...f, options: [...f.options, [r.cat, r.cat]] } : f);
   openSheet({
     title: (isNew ? 'New ' : 'Edit ') + def[0], fields, rec: r,
