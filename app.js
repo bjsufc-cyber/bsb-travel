@@ -73,7 +73,7 @@ function planRow(p, showDate) {
   return `<li class="row ${p.done ? 'done' : ''}" data-edit="${p.id}">
     <button class="tick" data-tick="${p.id}" aria-label="Done">${p.done ? '✓' : ''}</button>
     <div class="grow"><div class="t">${p.key ? '<i class="keydot"></i>' : ''}${esc(p.title)}</div>
-    ${p.note ? `<div class="s">${esc(p.note)}</div>` : ''}</div>
+    ${p.note ? `<div class="s">${esc(p.note)}</div>` : ''}${lkChip(p)}</div>
     <div class="time">${showDate && p.date ? esc(fmtDay(p.date, { day: 'numeric', month: 'short' })) + '<br>' : ''}${esc(p.time || '')}</div></li>`;
 }
 
@@ -98,9 +98,11 @@ function renderToday() {
     const where = t < start ? 'Countdown to take-off' : t > end ? 'Welcome home' : `${leg?.emoji || ''} ${esc(leg?.name || '')}`;
     const sub = t < start ? `${fmtDay(start)} to ${fmtDay(end)}` : t > end ? '' :
       `Day ${daysBetween(start, t) + 1} of ${daysBetween(start, end) + 1}` + (leg && leg.to > leg.from ? ` · ${daysBetween(t, leg.to)} night${daysBetween(t, leg.to) === 1 ? "" : "s"} left here` : '');
+    const stay = t >= start && t <= end ? currentStay(t, leg) : null;
     hero = `<div class="hero"><div class="where">${where}</div><div class="sub">${esc(sub)}</div>
-      ${next ? `<div class="cd"><div><b>${c.d}</b>days</div><div><b>${c.h}</b>hrs</div><div><b>${c.m}</b>min</div></div>
-      <div class="until">until <b>${esc(next.title)}</b><br>${esc(fmtDay(next.date))} at ${esc(next.time)}</div>` : ''}</div>`;
+      ${stay ? `<button class="staybtn" data-info="${stay.id}">Staying at <b>${esc(stay.title.split(',')[0])}</b><span>›</span></button>` : ''}
+      ${next ? `<div class="herolink" data-edit="${next.id}"><div class="cd"><div><b>${c.d}</b>days</div><div><b>${c.h}</b>hrs</div><div><b>${c.m}</b>min</div></div>
+      <div class="until">until <b>${esc(next.title)}</b><br>${esc(fmtDay(next.date))} at ${esc(next.time)}${linked(next) ? ' ›' : ''}</div></div>` : ''}</div>`;
   }
   const todays = plans().filter((p) => p.date === t).sort(byTime);
   const todos = S.all('todo').filter((x) => x.list === 'todo' && !x.done).slice(0, 5);
@@ -143,6 +145,7 @@ const planFields = () => [
   { k: 'date', label: 'Date (leave empty for an idea)', type: 'date' },
   { k: 'time', label: 'Time', type: 'time' },
   { k: 'leg', label: 'Place (for ideas without a date)', type: 'select', options: [['', 'Auto from date'], ...legs().map((l) => [l.id, l.name])] },
+  { k: 'link', label: 'Booking (opens with the plan)', type: 'select', options: linkOptions() },
   { k: 'note', label: 'Notes', type: 'textarea' },
   { k: 'key', label: 'Show as a countdown on Today (needs date and time)', type: 'checkbox' },
   { k: 'done', label: 'Done', type: 'checkbox' },
@@ -257,12 +260,58 @@ function infoHTML() {
   return `<div class="chips">${cats.filter((c) => I.some((x) => x.cat === c)).map((c) => `<a href="#" data-jump="${esc(c)}">${esc(c)}</a>`).join('')}</div>` +
     cats.map((c) => {
       const rows = I.filter((x) => x.cat === c).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.u - b.u);
-      return rows.length ? `<h3 id="cat-${esc(c)}">${esc(c)}</h3>` + rows.map((x) => `<article class="card">
-        <header><div class="grow"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</div><button class="pencil" data-edit="${x.id}" aria-label="Edit">✎</button></header>
-        ${x.ref ? `<button class="ref" data-copy="${esc(x.ref)}"><small>${esc(x.reflabel || 'Reference')}</small>${esc(x.ref)}</button>` : ''}
-        ${x.body ? `<p>${esc(x.body)}</p>` : ''}
-        <div class="actions">${x.th ? `<button data-driver="${x.id}">Show the driver</button>` : ''}${x.phone ? `<a href="tel:${esc(x.phone.replace(/[^+\d]/g, ''))}">Call ${esc(x.phone)}</a>` : ''}${x.map ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`).join('') : '';
+      return rows.length ? `<h3 id="cat-${esc(c)}">${esc(c)}</h3>` + rows.map((x) => infoCard(x)).join('') : '';
     }).join('') + `<button class="btn ghost" data-add="info">Add a booking or note</button>`;
+}
+function infoCard(x) {
+  const ps = plans().filter((p) => p.link === x.id && p.date).sort((a, b) => (a.date + (a.time || '99')).localeCompare(b.date + (b.time || '99')));
+  return `<article class="card">
+    <header><div class="grow"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</div><button class="pencil" data-edit="${x.id}" aria-label="Edit">✎</button></header>
+    ${x.ref ? `<button class="ref" data-copy="${esc(x.ref)}"><small>${esc(x.reflabel || 'Reference')}</small>${esc(x.ref)}</button>` : ''}
+    ${x.body ? `<p>${esc(x.body)}</p>` : ''}
+    ${ps.length ? `<div class="whens"><small>In the plan</small>${ps.map((p) => `<button data-goto="${p.id}"><b>${esc(fmtDay(p.date))}${p.time ? ' · ' + esc(p.time) : ''}</b><span>${esc(p.title)}</span><i>›</i></button>`).join('')}</div>` : ''}
+    <div class="actions">${x.th ? `<button data-driver="${x.id}">Show the driver</button>` : ''}${x.phone ? `<a href="tel:${esc(x.phone.replace(/[^+\d]/g, ''))}">Call ${esc(x.phone)}</a>` : ''}${x.map ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`;
+}
+// Links: a plan, to-do or leg can point at one Info record (field `link`, an info id).
+const linked = (r) => { const x = r?.link && S.items[r.link]; return x && !x.del && x.type === 'info' ? x : null; };
+const lkChip = (r) => { const x = linked(r); return x ? `<div class="lk">${esc(x.title)} ›</div>` : ''; };
+const catRank = (c) => (CATS.indexOf(c) + 1) || 99;
+const linkOptions = () => [['', 'None'], ...S.all('info').sort((a, b) => catRank(a.cat) - catRank(b.cat) || (a.order ?? 99) - (b.order ?? 99) || a.u - b.u).map((x) => [x.id, `${x.cat}: ${x.title}`])];
+// Where we sleep tonight: a stay whose linked plans span today (e.g. a weekend away), else the leg's own stay.
+function currentStay(t, leg) {
+  for (const x of S.all('info').filter((i) => i.cat === 'Stays' && i.id !== leg?.link)) {
+    const ds = plans().filter((p) => p.link === x.id && p.date).map((p) => p.date).sort();
+    if (ds.length > 1 && t >= ds[0] && t < ds.at(-1)) return x;
+  }
+  return linked(leg);
+}
+// Tap a plan or to-do: with a booking linked, show both together; otherwise open the editor.
+function openRec(r) { const x = linked(r); if (r.type !== 'info' && x) showLinked(r, x); else editRecord(r); }
+function showLinked(r, x) {
+  const when = r?.date ? fmtDay(r.date, { weekday: 'long', day: 'numeric', month: 'long' }) + (r.time ? ' at ' + r.time : '') : '';
+  sheet.innerHTML = `<div class="panel linked"><header><button type="button" class="link" data-x>Close</button><b>${r ? (r.type === 'plan' ? 'Plan' : 'To-do') : esc(x.cat)}</b>${r ? '<button type="button" class="link strong" data-ed>Edit</button>' : '<span class="link"></span>'}</header>
+    ${r ? `<div class="lhead${r.done ? ' done' : ''}"><b>${esc(r.title || r.text)}</b>${when ? `<small>${esc(when)}</small>` : ''}${r.note ? `<p>${esc(r.note)}</p>` : ''}</div>` : ''}
+    ${infoCard(x)}</div>`;
+  sheet.hidden = false; document.body.classList.add('locked');
+  const close = () => { sheet.hidden = true; sheet.innerHTML = ''; document.body.classList.remove('locked'); };
+  sheet.onclick = (e) => {
+    const q = (a) => e.target.closest(`[${a}]`); let el;
+    if (e.target === sheet || q('data-x')) close();
+    else if (q('data-ed')) { close(); editRecord(r); }
+    else if ((el = q('data-edit'))) { close(); editRecord(S.items[el.dataset.edit]); }
+    else if ((el = q('data-copy'))) copyText(el.dataset.copy);
+    else if ((el = q('data-driver'))) showDriver(S.items[el.dataset.driver]);
+    else if ((el = q('data-goto'))) { close(); gotoPlan(el.dataset.goto); }
+  };
+}
+// Jump to a plan in the Plan tab: open its leg, scroll to it and flash it.
+function gotoPlan(id) {
+  const p = S.items[id]; if (!p) return;
+  const l = p.date ? legFor(p.date) : legs().find((x) => x.id === p.leg);
+  if (l) ui.open[l.id] = true;
+  setTab('plan');
+  const row = view.querySelector(`.row[data-edit="${id}"]`);
+  if (row) { row.scrollIntoView({ block: 'center' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600); }
 }
 const infoFields = [
   { k: 'cat', label: 'Section', type: 'select', options: CATS.map((c) => [c, c]) },
@@ -582,7 +631,7 @@ async function renderPdf(blob, box) {
 
 /* ---------- more: lists, info, settings ---------- */
 function todoRow(x) {
-  return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}</div></li>`;
+  return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}${lkChip(x)}</div></li>`;
 }
 const THEMES = [
   ['night', 'Night flight', 'linear-gradient(135deg,#2D2A4A,#3b4096 60%,#A51931)'],
@@ -617,7 +666,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v20</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v21</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -691,7 +740,7 @@ function openSheet({ title, fields, rec, onSave, onDelete, saveLabel = 'Save' })
   };
 }
 function editRecord(r, isNew) {
-  const def = { plan: ['plan', planFields()], info: ['booking or note', infoFields], todo: ['item', [{ k: 'text', label: 'What', type: 'text', required: true }, { k: 'note', label: 'Notes', type: 'textarea' }, { k: 'done', label: 'Done', type: 'checkbox' }]] }[r.type];
+  const def = { plan: ['plan', planFields()], info: ['booking or note', infoFields], todo: ['item', [{ k: 'text', label: 'What', type: 'text', required: true }, { k: 'note', label: 'Notes', type: 'textarea' }, { k: 'link', label: 'Booking (opens with the item)', type: 'select', options: linkOptions() }, { k: 'done', label: 'Done', type: 'checkbox' }]] }[r.type];
   if (!def) return;
   openSheet({
     title: (isNew ? 'New ' : 'Edit ') + def[0], fields: def[1], rec: r,
@@ -714,7 +763,9 @@ view.addEventListener('click', (e) => {
   else if ((el = q('data-say'))) say(el.dataset.say);
   else if ((el = q('data-jump'))) { e.preventDefault(); document.getElementById('cat-' + el.dataset.jump)?.scrollIntoView({ behavior: 'smooth' }); }
   else if ((el = q('data-add'))) editRecord(el.dataset.add === 'plan' ? { type: 'plan', title: '', date: el.dataset.date || '', leg: el.dataset.leg || '' } : { type: 'info', cat: 'Stays', title: '' }, true);
-  else if ((el = q('data-edit')) && !e.target.closest('a')) editRecord(S.items[el.dataset.edit]);
+  else if ((el = q('data-goto'))) gotoPlan(el.dataset.goto);
+  else if ((el = q('data-info'))) showLinked(null, S.items[el.dataset.info]);
+  else if ((el = q('data-edit')) && !e.target.closest('a')) openRec(S.items[el.dataset.edit]);
 });
 
 /* ---------- boot ---------- */
