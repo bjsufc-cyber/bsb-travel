@@ -39,7 +39,10 @@ function rel(ms) {
 
 /* ---------- shell ---------- */
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
-function setTab(tab) { ui.tab = tab; saveUi(); render(); window.scrollTo(0, 0); }
+function setTab(tab) {
+  ui.tab = tab; saveUi(); render(); window.scrollTo(0, 0);
+  view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
+}
 $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 $('#syncdot').addEventListener('click', () => { ui.tab = 'more'; ui.more = 'settings'; saveUi(); render(); S.sync(); });
 
@@ -84,7 +87,7 @@ function planRow(p, showDate) {
   return `<li class="row ${p.done ? 'done' : ''}" data-edit="${p.id}">
     <button class="tick" data-tick="${p.id}" aria-label="Done" aria-pressed="${!!p.done}">${p.done ? '✓' : ''}</button>
     <div class="grow"><div class="t">${p.key ? '<i class="keydot"></i>' : ''}${esc(p.title)}</div>
-    ${p.note ? `<div class="s">${esc(p.note)}</div>` : ''}${lkChip(p)}</div>
+    ${p.note ? `<div class="s clamp">${esc(p.note)}</div>` : ''}${lkChip(p)}</div>
     <div class="time">${showDate && p.date ? esc(fmtDay(p.date, { day: 'numeric', month: 'short' })) + '<br>' : ''}${esc(p.time || '')}</div></li>`;
 }
 
@@ -119,7 +122,7 @@ function renderToday() {
   const todos = S.all('todo').filter((x) => x.list === 'todo' && !x.done).sort(todoSort).slice(0, 5);
   view.innerHTML = hero + clocksHTML(now) +
     `<h3>Today, ${esc(fmtDay(t))} <button class="add" data-add="plan" data-date="${t}" aria-label="Add a plan for today">＋</button></h3>
-     ${todays.length ? `<ul class="list">${todays.map((p) => planRow(p)).join('')}</ul>` : `<p class="empty">Nothing planned today.</p>`}
+     ${todays.length ? `<ul class="list">${todays.map((p) => planRow(p)).join('')}</ul>` : `<div class="blank"><b>Nothing planned today</b>Tap ＋ to add a plan.</div>`}
      ${upcoming.length > 1 ? `<h3>Coming up</h3><ul class="list">${upcoming.slice(1, 6).map((p) =>
        `<li class="row" data-edit="${p.id}"><div class="grow"><div class="t">${esc(p.title)}</div><div class="s">${esc(fmtDay(p.date))} at ${esc(p.time)}</div></div><div class="time">${rel(instant(p) - now)}</div></li>`).join('')}</ul>` : ''}
      ${todos.length ? `<h3>Still to do</h3><ul class="list">${todos.map(todoRow).join('')}</ul>` : ''}`;
@@ -136,7 +139,7 @@ function renderPlan() {
     if (open) {
       for (let d = l.from; d <= (l.to === l.from ? l.to : lastDay); d = addDays(d, 1)) {
         const items = P.filter((p) => p.date === d).sort(byTime);
-        days += `<div class="day ${d === t ? 'isToday' : ''}"><h4>${esc(fmtDay(d))}${d === t ? ' · today' : ''}<button class="add" data-add="plan" data-date="${d}" aria-label="Add a plan on ${esc(fmtDay(d))}">＋</button></h4>
+        days += `<div class="day ${d === t ? 'isToday' : ''}"><h4><span>${esc(fmtDay(d))}${d === t ? '<span class="todaytag">Today</span>' : ''}</span><button class="add" data-add="plan" data-date="${d}" aria-label="Add a plan on ${esc(fmtDay(d))}">＋</button></h4>
           ${items.length ? `<ul class="list">${items.map((p) => planRow(p)).join('')}</ul>` : ''}</div>`;
       }
       const ideas = P.filter((p) => !p.date && p.leg === l.id).sort((a, b) => a.u - b.u);
@@ -146,8 +149,8 @@ function renderPlan() {
     const n = P.filter((p) => (p.date && legFor(p.date) === l) || (!p.date && p.leg === l.id)).length;
     return `<section class="leg ${open ? 'open' : ''}"><button class="leghead" data-leg="${l.id}" aria-expanded="${open}">
       <span class="em">${esc(l.emoji || '📍')}</span><span class="grow"><b>${esc(l.name)}</b><small>${esc(fmtDay(l.from, { day: 'numeric', month: 'short' }))} to ${esc(fmtDay(l.to, { day: 'numeric', month: 'short' }))}${l.to > l.from ? ` · ${daysBetween(l.from, l.to)} night${daysBetween(l.from, l.to) === 1 ? "" : "s"}` : ''} · ${n} plans</small></span>
-      <span class="chev">${open ? '▾' : '▸'}</span></button>${days}</section>`;
-  }).join('') || '<p class="empty">No trip loaded yet.</p>';
+      <svg class="chevi" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 1.5 8.5 6 4 10.5"/></svg></button>${days}</section>`;
+  }).join('') || '<div class="blank"><b>No trip loaded yet</b>It appears here after the first sync.</div>';
   const other = P.filter((p) => p.date ? !legFor(p.date) : !L.some((l) => l.id === p.leg)).sort((a, b) => (a.date || '9').localeCompare(b.date || '9') || byTime(a, b));
   if (L.length && other.length) view.insertAdjacentHTML('beforeend', `<h3>Other dates and ideas</h3><ul class="list">${other.map((p) => planRow(p, true)).join('')}</ul>`);
   view.querySelectorAll('.leghead').forEach((b) => (b.onclick = () => { const id = b.dataset.leg, l = L.find((x) => x.id === id); ui.open[id] = !(ui.open[id] ?? (l === cur)); saveUi(); render(); }));
@@ -287,7 +290,7 @@ function infoHTML() {
     cats.map((c) => {
       const rows = I.filter((x) => x.cat === c).sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.u - b.u);
       return rows.length ? `<h3 id="cat-${esc(c)}">${esc(c)}</h3>` + rows.map((x) => infoCard(x)).join('') : '';
-    }).join('') + `<button class="btn ghost" data-add="info">Add a booking or note</button>`;
+    }).join('') + (I.length ? '' : '<div class="blank"><b>No bookings yet</b>Flights, stays, references and phone numbers live here.</div>') + `<button class="btn ghost" data-add="info">Add a booking or note</button>`;
 }
 function infoCard(x) {
   const ps = plans().filter((p) => p.link === x.id && p.date).sort((a, b) => (a.date + (a.time || '99')).localeCompare(b.date + (b.time || '99')));
@@ -477,13 +480,13 @@ function renderTranslate() {
       ${hasKey ? '' : `<p class="hint">${th2en ? 'Google opens in a new tab.' : 'Copy the Thai from Google, then paste it below.'} Add a Claude key in More, Settings to translate and read photos right here.</p>${th2en ? '' : '<textarea id="wth" rows="2" aria-label="Thai text" placeholder="Paste the Thai here"></textarea><button class="btn ghost" id="wsavep">Save</button>'}`}</div>
       <div id="wout">${draft ? draftHTML() : ''}</div>
       ${saved.length ? `<h3>Saved</h3><ul class="list">${saved.map((m) => { const read = m.kind === 'read' || m.kind === 'photo';
-        return `<li class="row msg" data-msg="${m.id}"><div class="grow"><div class="s">${m.kind === 'photo' ? '📷 ' : read ? '↩︎ ' : ''}${esc(m.en.split('\n')[0])}${m.isan ? ' <span class="isantag">Isaan</span>' : ''}</div>${m.th ? `<div class="th${read ? ' small' : ''}">${esc(m.th.split('\n')[0])}</div>` : ''}${m.rom ? `<div class="ro">${esc(m.rom)}</div>` : ''}</div><button class="showbtn" data-mdel="${m.id}" aria-label="Delete">✕</button></li>`; }).join('')}</ul>` : '<p class="empty">Messages and photos you save appear here, on both phones, and work offline.</p>'}`;
+        return `<li class="row msg" data-msg="${m.id}"><div class="grow"><div class="s">${m.kind === 'photo' ? '📷 ' : read ? '↩︎ ' : ''}${esc(m.en.split('\n')[0])}${m.isan ? ' <span class="isantag">Isaan</span>' : ''}</div>${m.th ? `<div class="th${read ? ' small' : ''}">${esc(m.th.split('\n')[0])}</div>` : ''}${m.rom ? `<div class="ro">${esc(m.rom)}</div>` : ''}</div><button class="showbtn" data-mdel="${m.id}" aria-label="Delete">✕</button></li>`; }).join('')}</ul>` : '<div class="blank"><b>Nothing saved yet</b>Messages and photos you save appear here, on both phones, and work offline.</div>'}`;
   } else {
     const order = (x) => { const i = CATS.indexOf(x.cat); return (i < 0 ? 99 : i) * 1000 + (x.order ?? 99); };
     const P = S.all('info').filter((x) => x.th).sort((a, b) => order(a) - order(b) || a.u - b.u);
     body = (P.length ? P.map((x) => `<article class="card place"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}<div class="th">${esc(x.th)}</div>
-      <div class="actions"><button data-driver="${x.id}">Show the driver</button><button data-copy="${esc(x.th)}">Copy Thai</button>${x.map ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`).join('') : '') +
-      '<p class="hint center">Any booking in More, Info with an address in Thai shows here.</p>';
+      <div class="actions"><button data-driver="${x.id}">Show the driver</button><button data-copy="${esc(x.th)}">Copy Thai</button>${x.map ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.map)}">Map</a>` : ''}</div></article>`).join('') : '<div class="blank"><b>No places yet</b>Add an address in Thai to a booking in More, Info and it shows here, ready for a driver.</div>') +
+      (P.length ? '<p class="hint center">Any booking in More, Info with an address in Thai shows here.</p>' : '');
   }
   view.innerHTML = `<div class="seg">${segs.map(([k, l]) => `<button data-tsub="${k}" class="${ui.tsub === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-tsub]').forEach((b) => (b.onclick = () => { ui.tsub = b.dataset.tsub; saveUi(); render(); window.scrollTo(0, 0); }));
@@ -568,7 +571,7 @@ function docsHTML() {
     (docRows.length ? groups.map((g) => {
       const rows = docRows.filter((r) => r.group === g).sort((a, b) => a.name.localeCompare(b.name));
       return rows.length ? `<h3>${esc(g)}</h3><ul class="list">${rows.map((r) => `<li class="row doc" data-doc="${r.id}">${docIcon(r)}<div class="grow"><div class="t">${esc(r.name)}</div><div class="s">${D.fmtSize(r.size || 0)} · added ${new Date(r.added).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div></div><button class="pencil" data-docedit="${r.id}" aria-label="Rename or delete">✎</button></li>`).join('')}</ul>` : '';
-    }).join('') : '<p class="empty center">No documents on this phone yet. Add the e-visas, insurance schedule, bookings and passport pages.</p>') +
+    }).join('') : '<div class="blank"><b>No documents on this phone yet</b>Add the e-visas, insurance schedule, bookings and passport pages.</div>') +
     (docRows.length ? `<p class="count">${docRows.length} document${docRows.length === 1 ? '' : 's'} · ${D.fmtSize(total)} on this phone${docKept ? ' · kept safe from clean-ups' : ''}</p>` : '');
 }
 async function loadDocs() {
@@ -681,6 +684,7 @@ function paintTodos() {
   const rows = S.all('todo').filter((x) => x.list === ui.more).sort(todoSort), ul = $('#todolist');
   $('#todocount').textContent = `${rows.filter((x) => !x.done).length} left of ${rows.length}`;
   ul.innerHTML = rows.map(todoRow).join(''); ul.hidden = !rows.length;
+  $('#todocount').hidden = !rows.length; $('#todoempty').hidden = !!rows.length;
 }
 function todoRow(x) {
   return `<li class="row ${x.done ? 'done' : ''}" data-edit="${x.id}"><button class="tick" data-tick="${x.id}" aria-label="Done" aria-pressed="${!!x.done}">${x.done ? '✓' : ''}</button><div class="grow"><div class="t">${esc(x.text)}</div>${x.note ? `<div class="s">${esc(x.note)}</div>` : ''}${lkChip(x)}</div></li>`;
@@ -701,7 +705,8 @@ function renderMore() {
   if (ui.more === 'todo' || ui.more === 'pack') {
     const label = ui.more === 'todo' ? 'Add a to-do' : 'Add something to pack';
     body = `<form id="quickadd"><input id="qa" placeholder="${label}" aria-label="${label}" enterkeyhint="done"><button class="btn small">Add</button></form>
-      <p class="count" id="todocount"></p><ul class="list" id="todolist"></ul>`;
+      <p class="count" id="todocount"></p><ul class="list" id="todolist"></ul>
+      <div class="blank" id="todoempty" hidden><b>${ui.more === 'todo' ? 'Nothing to do yet' : 'Nothing to pack yet'}</b>Type above and tap Add. It shows on both phones.</div>`;
   } else if (ui.more === 'docs') {
     body = `<div id="docs">${docsHTML()}</div>`;
   } else if (ui.more === 'info') {
@@ -717,7 +722,7 @@ function renderMore() {
       <button class="btn small ghost" id="setclaude">${S.cfg.claude ? 'Replace key' : 'Add key'}</button>${S.cfg.claude ? ' <button class="btn small ghost" id="delclaude">Remove</button>' : ''}</div>
       <div class="card"><b>Appearance</b><div class="themes">${THEMES.map(([k, l, bg]) => `<button data-theme="${k}" class="${(document.documentElement.dataset.theme || 'night') === k ? 'on' : ''}"><i style="background:${bg}"></i>${l}</button>`).join('')}</div></div>
       <div class="card"><b>This phone</b><p>Signing out removes the trip data and the saved documents from this phone only.</p><button class="btn small danger" id="signout">Sign out</button></div>
-      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v23</p>`;
+      <img class="aboutlogo" src="icons/logo-180.png" alt=""><p class="count">BSB Travel · v24</p>`;
   }
   view.innerHTML = `<div class="seg">${seg.map(([k, l]) => `<button data-more="${k}" class="${ui.more === k ? 'on' : ''}">${l}</button>`).join('')}</div>${body}`;
   view.querySelectorAll('[data-more]').forEach((b) => (b.onclick = () => { ui.more = b.dataset.more; saveUi(); render(); }));
@@ -834,6 +839,7 @@ view.addEventListener('click', (e) => {
 });
 
 /* ---------- boot ---------- */
+document.addEventListener('touchstart', () => {}, { passive: true }); // lets iOS show the pressed look on touch-down
 const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
 let seenRev = S.rev;
 S.onChange(() => {

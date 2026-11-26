@@ -305,3 +305,91 @@ h3[id^="cat-"] { scroll-margin-top: calc(var(--sat) + 62px); }
 .tick::after, .day .add::after { inset: -9px; } .add::after { inset: -7px; } .pencil::after, .refresh::after { inset: -5px; } .playbtn::after { inset: -5px -3px; }
 .rate::after, .backdef::after { inset: -10px 0; } .link::after { inset: -8px -6px; }
 .panel label.check { min-height: 44px; }
+
+/* ===== v24: polish. Refinements only; the layout, themes and identity are unchanged. ===== */
+/* 1. Contrast. Each theme gets a readable danger colour, a card edge and a card shadow of its own. */
+:root, :root[data-theme="night"] { --bad: #ff8674; --edge: inset 0 1px 0 rgba(255,255,255,.07); --lift: 0 8px 24px rgba(0,0,0,.16); }
+:root[data-theme="temple"] { --bad: #b93426; --muted: #5f5d7a; --card-a: 78%; --edge: inset 0 1px 0 rgba(255,255,255,.7); --lift: 0 1px 2px rgba(45,42,74,.05), 0 10px 26px rgba(45,42,74,.07); }
+:root[data-theme="andaman"] { --bad: #ff8f7e; --fill: #127a7d; --edge: inset 0 1px 0 rgba(255,255,255,.07); --lift: 0 8px 24px rgba(0,0,0,.16); }
+:root[data-theme="jungle"] { --bad: #ff9a7a; --fill: #297f45; --edge: inset 0 1px 0 rgba(255,255,255,.07); --lift: 0 8px 24px rgba(0,0,0,.16); }
+.list, .card, .disp, .clock, .leghead { box-shadow: var(--edge), var(--lift); }
+.clock.here { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent), var(--lift); }
+.leg.open .leghead { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), var(--lift); }
+.leghead small { opacity: .88; }
+::placeholder { color: var(--muted); opacity: .85; }
+.hero .where, .hero .sub, .until { text-shadow: 0 1px 10px rgba(10,10,40,.35); }
+.hero::before { opacity: .34; }
+
+/* 2. Type scale: 11.5 / 13 / 14.5 / 16 / 17 / 22 / 28 / 34. Big numbers are tightened, small labels opened up. */
+#navbar b { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+h3 { font-weight: 650; margin: 24px 4px 8px; }
+.row .t { line-height: 1.3; } .row .s { font-size: 13.5px; line-height: 1.38; margin-top: 2px; }
+.row .time { font-weight: 500; }
+.card b { font-weight: 650; letter-spacing: -.005em; } .card small { font-size: 13.5px; margin-top: 1px; }
+.card p { line-height: 1.45; }
+.cd b, .clock b, .disp b { letter-spacing: -.02em; }
+.clock small { font-size: 10.5px; letter-spacing: .05em; white-space: nowrap; }
+#tabs button { font-size: 11px; } #tabs button.on { font-weight: 700; }
+.empty, .count { font-size: 14.5px; }
+.day h4 { font-size: 14.5px; }
+.todaytag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--on-fill); background: var(--key); vertical-align: 1px; }
+:root[data-theme="jungle"] .todaytag, :root[data-theme="andaman"] .todaytag { color: #1b1206; }
+
+/* 3. Spacing on a 4px rhythm: a little more air inside cards and rows, the same gap between sections. */
+.row { padding: 12px 14px; min-height: 52px; }
+.card { padding: 14px 16px; margin-bottom: 12px; }
+.leg { margin-bottom: 12px; } .leghead { padding: 13px 16px; }
+.clocks { gap: 12px; margin-top: 12px; }
+.seg { margin-bottom: 16px; }
+.actions { margin-top: 12px; }
+.chevi { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: .7; transition: transform .2s; }
+.leg.open .chevi { transform: rotate(90deg); }
+
+/* 4. Press states: everything you can tap answers the moment the finger lands. */
+.btn, .add, .tick, .pencil, .showbtn, .playbtn, .staybtn, .leghead, .seg button, .chips a, .themes button, .actions button, .actions a, .quick button, .pad button, .ref, .whens button, .isanbtn, .refresh, .link, .backdef, #docview .dvbar button, #driver .dcopy button, #driver .dclose, .picker .row {
+  transition: transform .12s ease-out, background-color .12s ease-out, opacity .12s ease-out; }
+.btn:active, .leghead:active, .ref:active, .whens button:active, .themes button:active, #driver .dcopy button:active, .picker .row:active { transform: scale(.975); }
+.add:active, .tick:active, .pencil:active, .showbtn:active, .playbtn:active, .staybtn:active, .seg button:active, .chips a:active, .actions button:active, .actions a:active, .isanbtn:active, .refresh:active, #docview .dvbar button:active, #driver .dclose:active { transform: scale(.92); }
+.quick button:active, .pad button:active { transform: scale(.95); }
+#swap { transition: transform .12s ease-out; } #swap:active { transform: translateY(-50%) scale(.9); }
+.link:active, .backdef:active, .rate:active { opacity: .5; }
+.btn:active, .actions button:active, .add:active, .playbtn:active { filter: brightness(1.12); }
+.row[data-edit], .row[data-doc], .row[data-msg], .phrase, .herolink, .disp .from, .disp .to { transition: background-color .12s ease-out, opacity .12s ease-out; }
+.row[data-edit]:active, .row[data-doc]:active, .row[data-msg]:active, .phrase:active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.herolink:active, .disp .from:active, .disp .to:active { opacity: .7; }
+.row.done .tick { animation: none; }
+
+/* 5. Motion: sheets rise, the scrim fades, the page settles in on a tab change, the toast lifts. */
+@keyframes rise { from { transform: translateY(28px); opacity: 0; } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes settle { from { transform: translateY(6px); opacity: 0; } }
+@keyframes toastin { from { transform: translate(-50%, 8px); opacity: 0; } }
+#sheet { animation: fade .2s ease-out; }
+.panel { animation: rise .32s cubic-bezier(.2, .9, .3, 1); }
+#driver, #docview { animation: fade .18s ease-out; }
+#view.enter { animation: settle .22s cubic-bezier(.2, .9, .3, 1); }
+#toast { animation: toastin .22s cubic-bezier(.2, .9, .3, 1); box-shadow: 0 6px 20px rgba(0,0,0,.3); padding: 9px 16px; font-weight: 500; }
+@media (prefers-reduced-motion: reduce) {
+  .panel, #view.enter, #toast { animation: fade .15s ease-out; }
+  #tabs .pill, .chevi { transition: none; }
+  .row.flash { animation-duration: 2.4s; }
+  .btn:active, .leghead:active, .ref:active, .whens button:active, .themes button:active, .add:active, .tick:active, .pencil:active, .showbtn:active, .playbtn:active, .staybtn:active, .seg button:active, .chips a:active, .actions button:active, .actions a:active, .isanbtn:active, .refresh:active, .quick button:active, .pad button:active, #driver .dcopy button:active, #driver .dclose:active, #docview .dvbar button:active, .picker .row:active, #tabs button:active svg { transform: none; opacity: .7; }
+  #swap:active { transform: translateY(-50%); opacity: .7; }
+}
+
+/* 6. Sheets match the cards: a grab handle, the same radius and field style, a clear focus ring. */
+.panel::before { content: ""; flex: none; align-self: center; width: 36px; height: 5px; border-radius: 3px; margin: 8px 0 -14px; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.panel header b { font-size: 17px; font-weight: 600; }
+.panel .card { background: var(--inset); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; margin-bottom: 0; }
+.panel .card .ref, .panel .card .whens button { background: color-mix(in srgb, var(--surface) 60%, transparent); }
+input, textarea, select { transition: border-color .15s, box-shadow .15s; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.check input:focus { box-shadow: none; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 19px) 50%, calc(100% - 14px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+
+/* 7. Empty states: a quiet outlined panel with one plain sentence, instead of a stray line or loose text. */
+.blank { border: 1.5px dashed var(--line); border-radius: 18px; padding: 22px 18px; text-align: center; color: var(--muted); font-size: 14.5px; line-height: 1.45; margin: 12px 0; }
+.blank b { display: block; color: var(--ink); font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+/* A plan's note shows two lines in the lists, ending with "…"; the full note is there when the plan is opened. */
+.row .s.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
